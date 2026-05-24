@@ -1,0 +1,9 @@
+{
+  "name": "Cuenta Clara",
+  "short_name": "Cuenta Clara",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#051f20",
+  "theme_color": "#051f20",
+  "description": "App sencilla para controlar ingresos, gastos y presupuesto de una cuenta compartida."
+}
