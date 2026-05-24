@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#051f20" />
+    <title>Cuenta Clara</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <button class="round-button" id="resetDemoBtn" title="Reiniciar datos" aria-label="Reiniciar datos">
+          <span aria-hidden="true">↺</span>
+        </button>
+        <div>
+          <p class="eyebrow">Cuenta compartida</p>
+          <h1>Hola, Cuenta Clara</h1>
+        </div>
+        <button class="round-button" title="Buscar" aria-label="Buscar">
+          <span aria-hidden="true">⌕</span>
+        </button>
+      </header>
+
+      <main>
+        <section class="hero-panel">
+          <div class="month-control">
+            <button class="ghost-button" id="prevMonthBtn" aria-label="Mes anterior">‹</button>
+            <div>
+              <p class="label">Resumen de</p>
+              <h2 id="monthTitle">Mayo 2026</h2>
+            </div>
+            <button class="ghost-button" id="nextMonthBtn" aria-label="Mes siguiente">›</button>
+          </div>
+
+          <article class="balance-card">
+            <p>Saldo disponible</p>
+            <strong id="balanceTotal">₡0</strong>
+            <span id="balanceHint">Despues de gastos y ahorros</span>
+          </article>
+
+          <div class="summary-grid">
+            <article class="metric income">
+              <span>Ingresos</span>
+              <strong id="incomeTotal">₡0</strong>
+            </article>
+            <article class="metric expense">
+              <span>Gastos</span>
+              <strong id="expenseTotal">₡0</strong>
+            </article>
+            <article class="metric saving">
+              <span>Ahorros</span>
+              <strong id="savingTotal">₡0</strong>
+            </article>
+          </div>
+
+          <div class="quick-actions">
+            <button class="quick-action" data-jump="movement" data-type="expense">
+              <span>−</span>
+              <strong>Gasto</strong>
+            </button>
+            <button class="quick-action" data-jump="movement" data-type="income">
+              <span>+</span>
+              <strong>Ingreso</strong>
+            </button>
+            <button class="quick-action" data-jump="savings">
+              <span>✓</span>
+              <strong>Ahorro</strong>
+            </button>
+          </div>
+        </section>
+
+        <nav class="tabs" aria-label="Secciones">
+          <button class="tab active" data-view="dashboard">Inicio</button>
+          <button class="tab" data-view="movement">Agregar</button>
+          <button class="tab" data-view="receipt">Factura</button>
+          <button class="tab" data-view="budgets">Presupuesto</button>
+          <button class="tab" data-view="savings">Ahorros</button>
+          <button class="tab" data-view="history">Historial</button>
+        </nav>
+
+        <section class="view active" id="dashboardView">
+          <div class="analytics-grid">
+            <article class="glass-panel">
+              <div class="section-heading">
+                <h2>Gastos por categoria</h2>
+                <span id="topCategoryLabel">Sin gastos</span>
+              </div>
+              <div class="chart-row">
+                <div class="donut-chart" id="expenseDonut"><span id="expenseDonutLabel">0%</span></div>
+                <div class="category-list" id="categoryBreakdown"></div>
+              </div>
+            </article>
+
+            <article class="glass-panel">
+              <div class="section-heading">
+                <h2>Informe financiero</h2>
+                <span id="budgetStatus">Sin datos</span>
+              </div>
+              <div class="bar-chart" id="monthlyChart"></div>
+              <p class="chart-note" id="budgetHint">Agreguen ingresos, gastos y limites por categoria.</p>
+            </article>
+          </div>
+
+          <div class="section-heading">
+            <h2>Metas de ahorro</h2>
+            <span id="savingStatusLabel">0 metas</span>
+          </div>
+          <div class="savings-strip" id="savingsPreview"></div>
+
+          <div class="section-heading">
+            <h2>Ultimos movimientos</h2>
+          </div>
+          <div class="movement-list" id="recentMovements"></div>
+        </section>
+
+        <section class="view" id="movementView">
+          <form class="form-panel" id="movementForm">
+            <div class="segmented" role="radiogroup" aria-label="Tipo de movimiento">
+              <label>
+                <input type="radio" name="type" value="expense" checked />
+                <span>Gasto</span>
+              </label>
+              <label>
+                <input type="radio" name="type" value="income" />
+                <span>Ingreso</span>
+              </label>
+            </div>
+
+            <label class="field">
+              <span>Monto en colones</span>
+              <input id="amountInput" type="number" min="0" step="1" placeholder="Ej. 38500" required />
+            </label>
+
+            <label class="field">
+              <span>Fecha</span>
+              <input id="dateInput" type="date" required />
+            </label>
+
+            <label class="field">
+              <span>Categoria</span>
+              <select id="categoryInput" required></select>
+            </label>
+
+            <label class="field">
+              <span>Comercio o fuente</span>
+              <input id="merchantInput" type="text" placeholder="Ej. Walmart, salario, alquiler" />
+            </label>
+
+            <label class="field">
+              <span>Nota</span>
+              <textarea id="noteInput" rows="3" placeholder="Opcional"></textarea>
+            </label>
+
+            <button class="primary-button" type="submit">Guardar movimiento</button>
+          </form>
+        </section>
+
+        <section class="view" id="receiptView">
+          <div class="form-panel">
+            <div class="receipt-upload">
+              <label class="upload-box">
+                <input id="receiptImageInput" type="file" accept="image/*" capture="environment" />
+                <span>Tomar o subir foto de factura</span>
+                <small>Luego confirman monto, fecha y categoria.</small>
+              </label>
+              <img id="receiptPreview" alt="" hidden />
+            </div>
+
+            <label class="field">
+              <span>Texto de la factura</span>
+              <textarea id="receiptTextInput" rows="7" placeholder="Ej. Walmart 23/05/2026 total 38750 arroz leche detergente"></textarea>
+            </label>
+
+            <label class="field">
+              <span>Webhook de Make</span>
+              <input id="makeWebhookInput" type="url" placeholder="https://hook.us2.make.com/..." />
+            </label>
+
+            <label class="field">
+              <span>API key de Gemini</span>
+              <input id="geminiApiKeyInput" type="password" placeholder="Opcional si no usas Make" />
+              <small>Se guarda en este navegador para no pegarla cada vez.</small>
+            </label>
+
+            <button class="secondary-button" id="analyzeReceiptBtn" type="button">Analizar factura</button>
+            <p class="status-text" id="receiptStatus">Si dejas Make vacio, se usa Gemini directo con tu API key.</p>
+
+            <div class="receipt-result" id="receiptResult" hidden>
+              <h2>Resultado sugerido</h2>
+              <dl>
+                <div><dt>Fecha</dt><dd id="receiptDate">-</dd></div>
+                <div><dt>Comercio</dt><dd id="receiptMerchant">-</dd></div>
+                <div><dt>Total</dt><dd id="receiptTotal">-</dd></div>
+                <div><dt>Categoria</dt><dd id="receiptCategory">-</dd></div>
+              </dl>
+              <p class="label">Productos detectados</p>
+              <div class="chips" id="receiptItems"></div>
+              <button class="primary-button" id="saveReceiptBtn" type="button">Guardar como gasto</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="budgetsView">
+          <form class="budget-form" id="categoryForm">
+            <label class="field">
+              <span>Nueva categoria</span>
+              <input id="newCategoryNameInput" type="text" placeholder="Ej. Mascotas, regalos, belleza" required />
+            </label>
+            <label class="field">
+              <span>Patrones o palabras</span>
+              <input id="newCategoryKeywordsInput" type="text" placeholder="Ej. veterinaria, alimento perro, groomer" />
+            </label>
+            <button class="secondary-button" type="submit">Agregar categoria</button>
+          </form>
+
+          <form class="budget-form" id="budgetForm">
+            <label class="field">
+              <span>Categoria</span>
+              <select id="budgetCategoryInput"></select>
+            </label>
+            <label class="field">
+              <span>Limite mensual</span>
+              <input id="budgetAmountInput" type="number" min="0" step="1" placeholder="Ej. 200000" required />
+            </label>
+            <button class="primary-button" type="submit">Guardar limite</button>
+          </form>
+          <div class="budget-list" id="budgetList"></div>
+        </section>
+
+        <section class="view" id="savingsView">
+          <form class="form-panel" id="savingForm">
+            <div class="section-heading compact">
+              <h2>Pasar dinero a ahorro</h2>
+              <span id="availableForSaving">Disponible ₡0</span>
+            </div>
+
+            <label class="field">
+              <span>Meta</span>
+              <select id="savingAccountInput"></select>
+            </label>
+
+            <label class="field">
+              <span>Monto</span>
+              <input id="savingAmountInput" type="number" min="0" step="1" placeholder="Ej. 50000" required />
+            </label>
+
+            <label class="field">
+              <span>Fecha</span>
+              <input id="savingDateInput" type="date" required />
+            </label>
+
+            <button class="primary-button" type="submit">Mover a ahorro</button>
+          </form>
+
+          <form class="budget-form" id="savingGoalForm">
+            <label class="field">
+              <span>Nueva meta</span>
+              <input id="savingGoalNameInput" type="text" placeholder="Ej. Viaje, emergencia, casa" required />
+            </label>
+            <label class="field">
+              <span>Monto objetivo</span>
+              <input id="savingGoalTargetInput" type="number" min="0" step="1" placeholder="Ej. 1000000" required />
+            </label>
+            <button class="secondary-button" type="submit">Crear meta</button>
+          </form>
+
+          <div class="savings-list" id="savingsList"></div>
+        </section>
+
+        <section class="view" id="historyView">
+          <div class="filters">
+            <select id="historyTypeFilter" aria-label="Filtrar por tipo">
+              <option value="all">Todo</option>
+              <option value="income">Ingresos</option>
+              <option value="expense">Gastos</option>
+              <option value="saving">Ahorros</option>
+            </select>
+            <select id="historyCategoryFilter" aria-label="Filtrar por categoria"></select>
+          </div>
+          <div class="movement-list" id="historyList"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
