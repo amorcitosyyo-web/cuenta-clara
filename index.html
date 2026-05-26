@@ -11,16 +11,10 @@
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <button class="round-button" id="resetDemoBtn" title="Reiniciar datos" aria-label="Reiniciar datos">
-          <span aria-hidden="true">↺</span>
-        </button>
         <div>
           <p class="eyebrow">Cuenta compartida</p>
           <h1>Hola, Cuenta Clara</h1>
         </div>
-        <button class="round-button" title="Buscar" aria-label="Buscar">
-          <span aria-hidden="true">⌕</span>
-        </button>
       </header>
 
       <main>
@@ -110,9 +104,18 @@
           <div class="savings-strip" id="savingsPreview"></div>
 
           <div class="section-heading">
-            <h2>Ultimos movimientos</h2>
+            <h2>Movimientos del mes</h2>
+            <span id="monthlyMovementsCount">0 movimientos</span>
           </div>
           <div class="movement-list" id="recentMovements"></div>
+
+          <article class="glass-panel alert-panel">
+            <div class="section-heading">
+              <h2>Alertas simples</h2>
+              <span>Para reaccionar a tiempo</span>
+            </div>
+            <div class="alert-list" id="alertsList"></div>
+          </article>
         </section>
 
         <section class="view" id="movementView">
@@ -153,7 +156,10 @@
               <textarea id="noteInput" rows="3" placeholder="Opcional"></textarea>
             </label>
 
-            <button class="primary-button" type="submit">Guardar movimiento</button>
+            <div class="form-actions">
+              <button class="primary-button" id="movementSubmitBtn" type="submit">Guardar movimiento</button>
+              <button class="secondary-button" id="cancelMovementEditBtn" type="button" hidden>Cancelar edicion</button>
+            </div>
           </form>
         </section>
 
@@ -173,19 +179,8 @@
               <textarea id="receiptTextInput" rows="7" placeholder="Ej. Walmart 23/05/2026 total 38750 arroz leche detergente"></textarea>
             </label>
 
-            <label class="field">
-              <span>Webhook de Make</span>
-              <input id="makeWebhookInput" type="url" placeholder="https://hook.us2.make.com/..." />
-            </label>
-
-            <label class="field">
-              <span>API key de Gemini</span>
-              <input id="geminiApiKeyInput" type="password" placeholder="Opcional si no usas Make" />
-              <small>Se guarda en este navegador para no pegarla cada vez.</small>
-            </label>
-
             <button class="secondary-button" id="analyzeReceiptBtn" type="button">Analizar factura</button>
-            <p class="status-text" id="receiptStatus">Si dejas Make vacio, se usa Gemini directo con tu API key.</p>
+            <p class="status-text" id="receiptStatus">La app usa el analisis local si el backend protegido no esta configurado.</p>
 
             <div class="receipt-result" id="receiptResult" hidden>
               <h2>Resultado sugerido</h2>
@@ -204,6 +199,16 @@
 
         <section class="view" id="budgetsView">
           <form class="budget-form" id="categoryForm">
+            <div class="segmented" role="radiogroup" aria-label="Tipo de categoria">
+              <label>
+                <input type="radio" name="categoryKind" value="expense" checked />
+                <span>Gastos</span>
+              </label>
+              <label>
+                <input type="radio" name="categoryKind" value="income" />
+                <span>Ingresos</span>
+              </label>
+            </div>
             <label class="field">
               <span>Nueva categoria</span>
               <input id="newCategoryNameInput" type="text" placeholder="Ej. Mascotas, regalos, belleza" required />
@@ -212,10 +217,15 @@
               <span>Patrones o palabras</span>
               <input id="newCategoryKeywordsInput" type="text" placeholder="Ej. veterinaria, alimento perro, groomer" />
             </label>
-            <button class="secondary-button" type="submit">Agregar categoria</button>
+            <div class="form-actions">
+              <button class="secondary-button" id="categorySubmitBtn" type="submit">Agregar categoria</button>
+              <button class="secondary-button" id="cancelCategoryEditBtn" type="button" hidden>Cancelar edicion</button>
+            </div>
           </form>
+          <div class="budget-list" id="categoryManageList"></div>
 
           <form class="budget-form" id="budgetForm">
+            <p class="status-text">Los cambios aplican desde este mes hacia adelante.</p>
             <label class="field">
               <span>Categoria</span>
               <select id="budgetCategoryInput"></select>
@@ -236,6 +246,17 @@
               <span id="availableForSaving">Disponible ₡0</span>
             </div>
 
+            <div class="segmented" role="radiogroup" aria-label="Tipo de ahorro">
+              <label>
+                <input type="radio" name="savingAction" value="deposit" checked />
+                <span>Guardar</span>
+              </label>
+              <label>
+                <input type="radio" name="savingAction" value="withdraw" />
+                <span>Retirar</span>
+              </label>
+            </div>
+
             <label class="field">
               <span>Meta</span>
               <select id="savingAccountInput"></select>
@@ -251,7 +272,10 @@
               <input id="savingDateInput" type="date" required />
             </label>
 
-            <button class="primary-button" type="submit">Mover a ahorro</button>
+            <div class="form-actions">
+              <button class="primary-button" id="savingSubmitBtn" type="submit">Mover a ahorro</button>
+              <button class="secondary-button" id="cancelSavingEditBtn" type="button" hidden>Cancelar edicion</button>
+            </div>
           </form>
 
           <form class="budget-form" id="savingGoalForm">
@@ -263,7 +287,10 @@
               <span>Monto objetivo</span>
               <input id="savingGoalTargetInput" type="number" min="0" step="1" placeholder="Ej. 1000000" required />
             </label>
-            <button class="secondary-button" type="submit">Crear meta</button>
+            <div class="form-actions">
+              <button class="secondary-button" id="savingGoalSubmitBtn" type="submit">Crear meta</button>
+              <button class="secondary-button" id="cancelSavingGoalEditBtn" type="button" hidden>Cancelar edicion</button>
+            </div>
           </form>
 
           <div class="savings-list" id="savingsList"></div>
@@ -271,6 +298,8 @@
 
         <section class="view" id="historyView">
           <div class="filters">
+            <input id="historyDateFrom" type="date" aria-label="Fecha inicial" />
+            <input id="historyDateTo" type="date" aria-label="Fecha final" />
             <select id="historyTypeFilter" aria-label="Filtrar por tipo">
               <option value="all">Todo</option>
               <option value="income">Ingresos</option>
@@ -284,6 +313,18 @@
       </main>
     </div>
 
-    <script src="./app.js" type="module"></script>
+    <div class="confirm-modal" id="confirmModal" hidden>
+      <div class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+        <p class="eyebrow">Confirmacion</p>
+        <h2 id="confirmTitle">Eliminar</h2>
+        <p id="confirmMessage">Seguro que quieres continuar?</p>
+        <div class="form-actions">
+          <button class="secondary-button" id="confirmCancelBtn" type="button">Cancelar</button>
+          <button class="primary-button danger" id="confirmOkBtn" type="button">Eliminar</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="./app.js"></script>
   </body>
 </html>

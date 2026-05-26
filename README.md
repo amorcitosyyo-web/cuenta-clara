@@ -12,10 +12,9 @@ Primera version de una app web responsive para controlar una cuenta compartida d
 - Presupuestos por categoria.
 - Historial filtrable.
 - Subida o toma de foto de factura.
-- Campo para conectar un webhook de Make.
-- Compresion de foto antes de enviarla a Make/OCR.
-- Analisis directo con Gemini si no hay webhook de Make.
-- OCR gratuito directo con OCR.space como ultimo respaldo.
+- Compresion de foto antes de analizarla.
+- Backend protegido en `/api/analyze-receipt` para analizar facturas con Gemini sin exponer la API key.
+- OCR gratuito directo con OCR.space como respaldo local.
 - Analisis inicial de texto de factura para sugerir fecha, comercio, total, categoria y productos.
 - Datos guardados localmente en el navegador con `localStorage`.
 
@@ -30,7 +29,10 @@ Abre `index.html` en Safari, Chrome o Edge. En iPhone se puede abrir desde Safar
 3. Framework preset: `Other`.
 4. Build command: dejar vacio.
 5. Output directory: dejar vacio o usar `.`.
-6. Publica el proyecto.
+6. En `Settings > Environment Variables`, agrega `GEMINI_API_KEY` con tu llave de Google AI Studio.
+7. Publica el proyecto.
+
+Cuando la app este en Vercel, la pantalla Factura llama automaticamente a `/api/analyze-receipt`. La API key queda solo en Vercel y no aparece en el navegador.
 
 La primera version queda en linea, pero cada dispositivo guarda sus datos por separado hasta conectar Supabase.
 

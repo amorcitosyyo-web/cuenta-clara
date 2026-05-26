@@ -1,20 +1,37 @@
-const defaultCategories = [
-  { id: "supermercado", name: "Supermercado", color: "#8eb69b", keywords: ["walmart", "maxipali", "masxmenos", "automercado", "pali", "fresh", "arroz", "leche", "huevo", "pan", "carne"] },
-  { id: "casa", name: "Casa", color: "#89d9ff", keywords: ["alquiler", "condominio", "mueble", "casa", "ferreteria", "epa"] },
-  { id: "servicios", name: "Servicios", color: "#7a2cff", keywords: ["ice", "aya", "cnfl", "electricidad", "agua", "internet", "kolbi", "claro", "liberty"] },
-  { id: "transporte", name: "Transporte", color: "#d8ff55", keywords: ["uber", "didi", "gasolina", "combustible", "parking", "peaje", "bus"] },
-  { id: "comida", name: "Comida fuera", color: "#ff6f76", keywords: ["restaurante", "soda", "mcdonald", "burger", "pizza", "cafeteria", "uber eats"] },
-  { id: "salud", name: "Salud", color: "#5ee0c2", keywords: ["farmacia", "fischel", "hospital", "clinica", "medicina", "doctor"] },
-  { id: "entretenimiento", name: "Entretenimiento", color: "#ffbd59", keywords: ["netflix", "spotify", "cine", "cinemark", "streaming", "juego"] },
-  { id: "ahorro", name: "Ahorro", color: "#daf1de", keywords: ["ahorro", "inversion", "fondo"] },
-  { id: "ingreso", name: "Ingreso", color: "#d8ff55", keywords: ["salario", "pago", "freelance", "reembolso"] },
-  { id: "otros", name: "Otros", color: "#6f8279", keywords: [] },
+const expenseCategories = [
+  { id: "vivienda", name: "Vivienda (alquiler, agua, luz)", color: "#8eb69b", keywords: ["alquiler", "casa", "aya", "agua", "cnfl", "electricidad", "luz", "condominio"], kind: "expense" },
+  { id: "alimentacion", name: "Alimentacion (super, PriceSmart, carnes/verduras)", color: "#daf1de", keywords: ["walmart", "maxipali", "masxmenos", "mxm", "automercado", "pali", "fresh", "pricesmart", "price smart", "super", "arroz", "leche", "huevo", "pan", "carne", "verdura", "fruta"], kind: "expense" },
+  { id: "comida-fuera", name: "Comida fuera (restaurantes, cafe, antojos)", color: "#ffbd59", keywords: ["restaurante", "soda", "subway", "pizza", "cafe", "cafeteria", "pops", "antojo", "uber eats", "hamburguesa"], kind: "expense" },
+  { id: "hogar", name: "Hogar (limpieza, utensilios, gas)", color: "#89d9ff", keywords: ["limpieza", "jabon", "detergente", "utensilio", "ferreteria", "epa", "lagar", "gas", "propano", "hogar"], kind: "expense" },
+  { id: "salud", name: "Salud (farmacia, gym, doctor)", color: "#5ee0c2", keywords: ["farmacia", "fischel", "saba", "farmavalue", "hospital", "clinica", "medicina", "doctor", "smartfit", "gym"], kind: "expense" },
+  { id: "telefono-internet", name: "Telefono e internet (Claro, internet casa, recargas)", color: "#7a2cff", keywords: ["claro", "kolbi", "liberty", "internet", "recarga", "post pago", "prepago", "telefono"], kind: "expense" },
+  { id: "transporte", name: "Transporte (Uber, bus, gasolina)", color: "#d8ff55", keywords: ["uber", "didi", "gasolina", "combustible", "parking", "peaje", "bus", "sinpe tp"], kind: "expense" },
+  { id: "educacion", name: "Educacion (Open English, cursos, libros)", color: "#aeb9ff", keywords: ["openenglish", "open english", "curso", "libro", "educacion", "clase"], kind: "expense" },
+  { id: "suscripciones", name: "Suscripciones (Spotify, apps, membresias)", color: "#ff6f76", keywords: ["spotify", "netflix", "app", "membresia", "subscription", "suscripcion"], kind: "expense" },
+  { id: "compras-personales", name: "Compras personales (ropa, perfumes, cuidado personal)", color: "#f7b7d7", keywords: ["ropa", "perfume", "fraiche", "ekono", "cuidado personal", "shampoo", "desodorante"], kind: "expense" },
+  { id: "tecnologia", name: "Tecnologia (telefono, cargador, accesorios)", color: "#a1e7ff", keywords: ["telefono", "celular", "cargador", "cable", "accesorio", "tecnologia"], kind: "expense" },
+  { id: "ocio-salidas", name: "Ocio y salidas (cine, paseos, actividades)", color: "#ffa56b", keywords: ["cine", "cinepolis", "paseo", "actividad", "salida"], kind: "expense" },
+  { id: "ahorro", name: "Ahorro (emergencia, metas, reserva)", color: "#cfff57", keywords: ["ahorro", "emergencia", "meta", "reserva", "fondo"], kind: "special" },
+  { id: "imprevistos", name: "Imprevistos (arreglos, gastos raros, urgencias)", color: "#6f8279", keywords: ["arreglo", "reparacion", "urgencia", "imprevisto", "deuda", "refri", "nevera"], kind: "expense" },
+  { id: "regalos-familia", name: "Regalos / familia (regalos, ayudas, detalles)", color: "#b9d9c4", keywords: ["regalo", "familia", "ayuda", "detalle"], kind: "expense" },
 ];
 
-let categories = defaultCategories;
+const incomeCategories = [
+  { id: "ingreso", name: "Ingreso", color: "#d8ff55", keywords: ["salario", "pago", "freelance", "reembolso", "bono", "comision", "ventas"], kind: "income" },
+  { id: "salario", name: "Salario", color: "#8eb69b", keywords: ["salario", "sueldo", "quincena", "planilla"], kind: "income" },
+  { id: "negocio", name: "Negocio / freelance", color: "#5ee0c2", keywords: ["freelance", "comision", "ventas", "trabajo extra", "servicio"], kind: "income" },
+  { id: "reembolso", name: "Reembolso", color: "#ffbd59", keywords: ["reembolso", "devolucion", "reintegro", "refund"], kind: "income" },
+];
+
+let categories = [...expenseCategories, ...incomeCategories];
 
 const state = {
   activeMonth: new Date(2026, 4, 1),
+  editingMovementId: null,
+  editingSavingMovementId: null,
+  editingSavingGoalId: null,
+  editingCategoryId: null,
+  savingEditReturnView: "savings",
   pendingReceipt: null,
   data: normalizeData(loadData()),
 };
@@ -35,20 +52,22 @@ const els = {
   expenseDonut: document.querySelector("#expenseDonut"),
   expenseDonutLabel: document.querySelector("#expenseDonutLabel"),
   monthlyChart: document.querySelector("#monthlyChart"),
+  alertsList: document.querySelector("#alertsList"),
   savingsPreview: document.querySelector("#savingsPreview"),
   savingStatusLabel: document.querySelector("#savingStatusLabel"),
   recentMovements: document.querySelector("#recentMovements"),
+  monthlyMovementsCount: document.querySelector("#monthlyMovementsCount"),
   movementForm: document.querySelector("#movementForm"),
   amountInput: document.querySelector("#amountInput"),
   dateInput: document.querySelector("#dateInput"),
   categoryInput: document.querySelector("#categoryInput"),
   merchantInput: document.querySelector("#merchantInput"),
   noteInput: document.querySelector("#noteInput"),
+  movementSubmitBtn: document.querySelector("#movementSubmitBtn"),
+  cancelMovementEditBtn: document.querySelector("#cancelMovementEditBtn"),
   receiptImageInput: document.querySelector("#receiptImageInput"),
   receiptPreview: document.querySelector("#receiptPreview"),
   receiptTextInput: document.querySelector("#receiptTextInput"),
-  makeWebhookInput: document.querySelector("#makeWebhookInput"),
-  geminiApiKeyInput: document.querySelector("#geminiApiKeyInput"),
   analyzeReceiptBtn: document.querySelector("#analyzeReceiptBtn"),
   receiptStatus: document.querySelector("#receiptStatus"),
   receiptResult: document.querySelector("#receiptResult"),
@@ -64,20 +83,37 @@ const els = {
   categoryForm: document.querySelector("#categoryForm"),
   newCategoryNameInput: document.querySelector("#newCategoryNameInput"),
   newCategoryKeywordsInput: document.querySelector("#newCategoryKeywordsInput"),
+  categorySubmitBtn: document.querySelector("#categorySubmitBtn"),
+  cancelCategoryEditBtn: document.querySelector("#cancelCategoryEditBtn"),
+  categoryManageList: document.querySelector("#categoryManageList"),
+  categoryKindInputs: document.querySelectorAll('input[name="categoryKind"]'),
   budgetList: document.querySelector("#budgetList"),
   savingForm: document.querySelector("#savingForm"),
   savingAccountInput: document.querySelector("#savingAccountInput"),
   savingAmountInput: document.querySelector("#savingAmountInput"),
   savingDateInput: document.querySelector("#savingDateInput"),
+  savingSubmitBtn: document.querySelector("#savingSubmitBtn"),
+  cancelSavingEditBtn: document.querySelector("#cancelSavingEditBtn"),
   availableForSaving: document.querySelector("#availableForSaving"),
   savingGoalForm: document.querySelector("#savingGoalForm"),
   savingGoalNameInput: document.querySelector("#savingGoalNameInput"),
   savingGoalTargetInput: document.querySelector("#savingGoalTargetInput"),
+  savingGoalSubmitBtn: document.querySelector("#savingGoalSubmitBtn"),
+  cancelSavingGoalEditBtn: document.querySelector("#cancelSavingGoalEditBtn"),
   savingsList: document.querySelector("#savingsList"),
   historyTypeFilter: document.querySelector("#historyTypeFilter"),
   historyCategoryFilter: document.querySelector("#historyCategoryFilter"),
+  historyDateFrom: document.querySelector("#historyDateFrom"),
+  historyDateTo: document.querySelector("#historyDateTo"),
   historyList: document.querySelector("#historyList"),
+  confirmModal: document.querySelector("#confirmModal"),
+  confirmTitle: document.querySelector("#confirmTitle"),
+  confirmMessage: document.querySelector("#confirmMessage"),
+  confirmCancelBtn: document.querySelector("#confirmCancelBtn"),
+  confirmOkBtn: document.querySelector("#confirmOkBtn"),
 };
+
+let confirmDeleteResolver = null;
 
 init();
 
@@ -101,41 +137,104 @@ function bindEvents() {
       if (button.dataset.type) {
         const input = document.querySelector(`input[name="type"][value="${button.dataset.type}"]`);
         input.checked = true;
+        populateMovementCategoryOptions(button.dataset.type);
       }
     });
   });
 
+  document.querySelectorAll('input[name="type"]').forEach((radio) => {
+    radio.addEventListener("change", () => populateMovementCategoryOptions(getSelectedMovementType()));
+  });
+
   document.querySelector("#prevMonthBtn").addEventListener("click", () => changeMonth(-1));
   document.querySelector("#nextMonthBtn").addEventListener("click", () => changeMonth(1));
-  document.querySelector("#resetDemoBtn").addEventListener("click", resetData);
   els.movementForm.addEventListener("submit", saveMovementFromForm);
+  els.cancelMovementEditBtn.addEventListener("click", cancelMovementEdit);
   els.budgetForm.addEventListener("submit", saveBudget);
   els.categoryForm.addEventListener("submit", saveCategory);
+  els.categoryManageList.addEventListener("click", handleCategoryAction);
+  els.cancelCategoryEditBtn.addEventListener("click", cancelCategoryEdit);
+  els.categoryKindInputs.forEach((radio) => {
+    radio.addEventListener("change", () => {
+      cancelCategoryEdit(false);
+      els.newCategoryNameInput.value = "";
+      els.newCategoryKeywordsInput.value = "";
+      renderBudgetList(getMonthMovements());
+    });
+  });
   els.savingForm.addEventListener("submit", saveSavingTransfer);
+  els.cancelSavingEditBtn.addEventListener("click", () => cancelSavingTransferEdit(true, true));
   els.savingGoalForm.addEventListener("submit", saveSavingGoal);
+  els.cancelSavingGoalEditBtn.addEventListener("click", cancelSavingGoalEdit);
+  els.savingsList.addEventListener("click", handleSavingGoalAction);
   els.analyzeReceiptBtn.addEventListener("click", analyzeReceipt);
   els.saveReceiptBtn.addEventListener("click", savePendingReceipt);
   els.historyTypeFilter.addEventListener("change", renderHistory);
   els.historyCategoryFilter.addEventListener("change", renderHistory);
+  els.historyDateFrom.addEventListener("change", renderHistory);
+  els.historyDateTo.addEventListener("change", renderHistory);
+  els.historyList.addEventListener("click", handleMovementAction);
+  els.recentMovements.addEventListener("click", handleMovementAction);
+  els.confirmCancelBtn.addEventListener("click", () => resolveDeleteConfirm(false));
+  els.confirmOkBtn.addEventListener("click", () => resolveDeleteConfirm(true));
   els.receiptImageInput.addEventListener("change", previewReceiptImage);
-  els.makeWebhookInput.addEventListener("change", saveMakeWebhook);
-  els.makeWebhookInput.addEventListener("input", saveMakeWebhook);
-  els.geminiApiKeyInput.addEventListener("change", saveGeminiApiKey);
-  els.geminiApiKeyInput.addEventListener("input", saveGeminiApiKey);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !els.confirmModal.hidden) resolveDeleteConfirm(false);
+  });
+}
+
+function confirmDeleteApp(message, title = "Eliminar") {
+  if (confirmDeleteResolver) resolveDeleteConfirm(false);
+  els.confirmTitle.textContent = title;
+  els.confirmMessage.textContent = message;
+  els.confirmModal.hidden = false;
+  els.confirmOkBtn.focus();
+  return new Promise((resolve) => {
+    confirmDeleteResolver = resolve;
+  });
+}
+
+function resolveDeleteConfirm(shouldDelete) {
+  if (!confirmDeleteResolver) return;
+  const resolve = confirmDeleteResolver;
+  confirmDeleteResolver = null;
+  els.confirmModal.hidden = true;
+  resolve(shouldDelete);
 }
 
 function populateSelects() {
-  const options = categories
-    .map((category) => `<option value="${category.id}">${category.name}</option>`)
-    .join("");
-
-  els.categoryInput.innerHTML = options;
+  populateMovementCategoryOptions();
   els.budgetCategoryInput.innerHTML = categories
-    .filter((category) => !["ingreso", "ahorro"].includes(category.id))
+    .filter((category) => category.kind === "expense")
     .map((category) => `<option value="${category.id}">${category.name}</option>`)
     .join("");
-  els.historyCategoryFilter.innerHTML = `<option value="all">Todas las categorias</option>${options}`;
+  els.historyCategoryFilter.innerHTML = `<option value="all">Todas las categorias</option>${categories
+    .map((category) => `<option value="${category.id}">${category.name}</option>`)
+    .join("")}`;
   renderSavingOptions();
+}
+
+function renderOptions() {
+  populateSelects();
+}
+
+function getSelectedMovementType() {
+  return document.querySelector('input[name="type"]:checked')?.value || "expense";
+}
+
+function getSelectedCategoryKind() {
+  return document.querySelector('input[name="categoryKind"]:checked')?.value || "expense";
+}
+
+function getMovementCategories(type) {
+  return categories.filter((category) => category.kind === type);
+}
+
+function populateMovementCategoryOptions(type = getSelectedMovementType()) {
+  const options = getMovementCategories(type)
+    .map((category) => `<option value="${category.id}">${category.name}</option>`)
+    .join("");
+  els.categoryInput.innerHTML = options;
 }
 
 function renderSavingOptions() {
@@ -148,14 +247,17 @@ function setToday() {
   const today = toInputDate(new Date());
   els.dateInput.value = today;
   els.savingDateInput.value = today;
-  els.makeWebhookInput.value = localStorage.getItem("cuenta-clara-make-webhook") || "";
-  els.geminiApiKeyInput.value = localStorage.getItem("cuenta-clara-gemini-api-key") || "";
 }
 
 function switchView(view) {
   document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view));
   document.querySelectorAll(".view").forEach((panel) => panel.classList.remove("active"));
   document.querySelector(`#${view}View`).classList.add("active");
+  if (view === "movement") populateMovementCategoryOptions();
+}
+
+function getActiveView() {
+  return document.querySelector(".view.active")?.id?.replace("View", "") || "dashboard";
 }
 
 function changeMonth(direction) {
@@ -163,48 +265,74 @@ function changeMonth(direction) {
   render();
 }
 
+function getBudgetSnapshotForMonth(targetMonthKey) {
+  const snapshot = {};
+  const entries = [...(state.data.budgetHistory || [])]
+    .filter((entry) => entry.effectiveFrom <= targetMonthKey)
+    .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom) || a.createdAt.localeCompare(b.createdAt));
+
+  entries.forEach((entry) => {
+    snapshot[entry.categoryId] = Number(entry.amount || 0);
+  });
+
+  return snapshot;
+}
+
+function upsertBudgetForMonth(categoryId, amount, effectiveFrom) {
+  const history = Array.isArray(state.data.budgetHistory) ? state.data.budgetHistory : [];
+  const existing = history.find((entry) => entry.categoryId === categoryId && entry.effectiveFrom === effectiveFrom);
+  if (existing) {
+    existing.amount = amount;
+    existing.updatedAt = new Date().toISOString();
+  } else {
+    history.push({
+      id: createId(),
+      categoryId,
+      amount,
+      effectiveFrom,
+      createdAt: new Date().toISOString(),
+    });
+  }
+  state.data.budgetHistory = history;
+}
+
+function syncBudgetsForActiveMonth() {
+  state.data.budgets = getBudgetSnapshotForMonth(monthKey(state.activeMonth));
+}
+
 function loadData() {
   const stored = localStorage.getItem("cuenta-clara-data");
   if (stored) return JSON.parse(stored);
 
   return {
-    movements: [
-      makeMovement("income", 950000, "2026-05-02", "ingreso", "Salarios", "Ingreso compartido del mes"),
-      makeMovement("expense", 83500, "2026-05-03", "supermercado", "Walmart", "Compra semanal"),
-      makeMovement("expense", 42000, "2026-05-05", "servicios", "Internet", "Pago mensual"),
-      makeMovement("saving", 120000, "2026-05-06", "ahorro", "Fondo de emergencia", "Transferencia a ahorro", null, "emergencia"),
-      makeMovement("expense", 28500, "2026-05-09", "comida", "Restaurante", "Salida juntos"),
-      makeMovement("saving", 75000, "2026-05-16", "ahorro", "Viaje juntos", "Ahorro para vacaciones", null, "viaje"),
-    ],
-    budgets: {
-      supermercado: 220000,
-      servicios: 90000,
-      comida: 80000,
-      transporte: 70000,
-      salud: 50000,
-      entretenimiento: 60000,
-    },
-    savingsAccounts: [
-      { id: "emergencia", name: "Fondo de emergencia", target: 1000000, createdAt: new Date().toISOString() },
-      { id: "viaje", name: "Viaje juntos", target: 700000, createdAt: new Date().toISOString() },
-    ],
+    movements: [],
+    budgets: {},
+    savingsAccounts: [],
     customCategories: [],
     merchantRules: [],
   };
 }
 
 function normalizeData(data) {
+  const currentMonth = monthKey(new Date());
+  const budgetHistory = Array.isArray(data.budgetHistory) && data.budgetHistory.length
+    ? data.budgetHistory
+    : Object.entries(data.budgets || {}).map(([categoryId, amount]) => ({
+        id: createId(),
+        categoryId,
+        amount: Number(amount || 0),
+        effectiveFrom: currentMonth,
+        createdAt: new Date().toISOString(),
+      }));
+
   const normalized = {
     movements: Array.isArray(data.movements) ? data.movements : [],
     budgets: data.budgets || {},
+    budgetHistory,
     customCategories: Array.isArray(data.customCategories) ? data.customCategories : [],
+    deletedDefaultCategories: Array.isArray(data.deletedDefaultCategories) ? data.deletedDefaultCategories : [],
     merchantRules: Array.isArray(data.merchantRules) ? data.merchantRules : [],
-    savingsAccounts: Array.isArray(data.savingsAccounts) && data.savingsAccounts.length
-      ? data.savingsAccounts
-      : [
-          { id: "emergencia", name: "Fondo de emergencia", target: 1000000, createdAt: new Date().toISOString() },
-          { id: "viaje", name: "Viaje juntos", target: 700000, createdAt: new Date().toISOString() },
-        ],
+    savingsAccounts: Array.isArray(data.savingsAccounts) ? data.savingsAccounts : [],
   };
 
   normalized.movements = normalized.movements.map((movement) => ({
@@ -237,27 +365,95 @@ function makeMovement(type, amount, date, category, merchant, note = "", receipt
 function saveMovementFromForm(event) {
   event.preventDefault();
   const type = new FormData(els.movementForm).get("type");
-  const category = type === "income" && els.categoryInput.value === "ahorro" ? "ingreso" : els.categoryInput.value;
-  const movement = makeMovement(
-    type,
-    els.amountInput.value,
-    els.dateInput.value,
-    category,
-    els.merchantInput.value,
-    els.noteInput.value,
-  );
+  const available = getMovementCategories(type);
+  const category = available.some((item) => item.id === els.categoryInput.value)
+    ? els.categoryInput.value
+    : available[0]?.id || "otros";
+  const existing = state.data.movements.find((item) => item.id === state.editingMovementId);
 
-  state.data.movements.unshift(movement);
+  if (existing) {
+    existing.type = type;
+    existing.amount = Number(els.amountInput.value);
+    existing.date = els.dateInput.value;
+    existing.category = category;
+    existing.merchant = els.merchantInput.value.trim();
+    existing.note = els.noteInput.value.trim();
+  } else {
+    state.data.movements.unshift(makeMovement(
+      type,
+      els.amountInput.value,
+      els.dateInput.value,
+      category,
+      els.merchantInput.value,
+      els.noteInput.value,
+    ));
+  }
+
+  cancelMovementEdit(false);
   saveData();
   els.movementForm.reset();
   setToday();
+  populateMovementCategoryOptions();
   render();
   switchView("dashboard");
 }
 
+function startMovementEdit(id) {
+  const movement = state.data.movements.find((item) => item.id === id);
+  if (!movement || movement.type === "saving") return;
+  state.editingMovementId = id;
+  switchView("movement");
+  const typeInput = document.querySelector(`input[name="type"][value="${movement.type}"]`);
+  if (typeInput) typeInput.checked = true;
+  populateMovementCategoryOptions(movement.type);
+  els.amountInput.value = movement.amount;
+  els.dateInput.value = movement.date;
+  els.categoryInput.value = movement.category;
+  els.merchantInput.value = movement.merchant || "";
+  els.noteInput.value = movement.note || "";
+  els.movementSubmitBtn.textContent = "Guardar cambios";
+  els.cancelMovementEditBtn.hidden = false;
+}
+
+function cancelMovementEdit(shouldReset = true) {
+  state.editingMovementId = null;
+  els.movementSubmitBtn.textContent = "Guardar movimiento";
+  els.cancelMovementEditBtn.hidden = true;
+  if (shouldReset) {
+    els.movementForm.reset();
+    setToday();
+    populateMovementCategoryOptions();
+  }
+}
+
+async function deleteMovement(id) {
+  const movement = state.data.movements.find((item) => item.id === id);
+  if (!movement) return;
+  const label = movement.type === "income" ? "ingreso" : movement.type === "saving" ? "ahorro" : "gasto";
+  const confirmed = await confirmDeleteApp(`Vas a eliminar este ${label}.`, "Eliminar movimiento");
+  if (!confirmed) return;
+  state.data.movements = state.data.movements.filter((item) => item.id !== id);
+  if (state.editingMovementId === id) cancelMovementEdit(false);
+  if (state.editingSavingMovementId === id) cancelSavingTransferEdit(false);
+  saveData();
+  render();
+}
+
+function handleMovementAction(event) {
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+  if (button.dataset.action === "edit-movement") {
+    const movement = state.data.movements.find((item) => item.id === button.dataset.id);
+    if (movement?.type === "saving") startSavingTransferEdit(button.dataset.id);
+    else startMovementEdit(button.dataset.id);
+  }
+  if (button.dataset.action === "delete-movement") deleteMovement(button.dataset.id);
+}
+
 function saveBudget(event) {
   event.preventDefault();
-  state.data.budgets[els.budgetCategoryInput.value] = Number(els.budgetAmountInput.value);
+  upsertBudgetForMonth(els.budgetCategoryInput.value, Number(els.budgetAmountInput.value), monthKey(state.activeMonth));
+  syncBudgetsForActiveMonth();
   saveData();
   els.budgetForm.reset();
   render();
@@ -268,54 +464,175 @@ function saveCategory(event) {
   const name = els.newCategoryNameInput.value.trim();
   if (!name) return;
 
-  const id = slugifyCategory(name);
+  const editingId = state.editingCategoryId;
+  let id = editingId || slugifyCategory(name);
   const keywords = els.newCategoryKeywordsInput.value
     .split(",")
     .map((keyword) => keyword.trim().toLowerCase())
     .filter(Boolean);
+  const kind = getSelectedCategoryKind();
+  if (!editingId && categories.some((category) => category.id === id && category.kind !== kind)) {
+    id = `${kind}-${id}`.slice(0, 32);
+  }
 
-  const exists = categories.some((category) => category.id === id);
-  if (!exists) {
+  const existing = state.data.customCategories.find((category) => category.id === id);
+  if (existing) {
+    existing.name = name;
+    existing.keywords = keywords;
+    existing.kind = kind;
+  } else if (!categories.some((category) => category.id === id)) {
     state.data.customCategories.push({
       id,
       name,
       color: pickCategoryColor(state.data.customCategories.length),
       keywords,
+      kind,
       createdAt: new Date().toISOString(),
     });
   } else {
-    const category = state.data.customCategories.find((item) => item.id === id);
-    if (category) category.keywords = mergeUnique(category.keywords, keywords);
+    state.data.customCategories.push({
+      id,
+      name,
+      color: categoryColor(id),
+      keywords,
+      kind,
+      createdAt: new Date().toISOString(),
+    });
   }
 
   categories = mergeCategories(state.data.customCategories);
   saveData();
   els.categoryForm.reset();
+  const kindInput = document.querySelector(`input[name="categoryKind"][value="${kind}"]`);
+  if (kindInput) kindInput.checked = true;
+  cancelCategoryEdit(false);
   renderOptions();
   render();
+}
+
+function startCategoryEdit(id) {
+  const category = categories.find((item) => item.id === id);
+  if (!category || ["imprevistos", "ingreso"].includes(id)) return;
+  state.editingCategoryId = id;
+  const kindInput = document.querySelector(`input[name="categoryKind"][value="${category.kind}"]`);
+  if (kindInput) kindInput.checked = true;
+  els.newCategoryNameInput.value = category.name || "";
+  els.newCategoryKeywordsInput.value = Array.isArray(category.keywords) ? category.keywords.join(", ") : "";
+  els.categorySubmitBtn.textContent = "Guardar categoria";
+  els.cancelCategoryEditBtn.hidden = false;
+  switchView("budgets");
+}
+
+function cancelCategoryEdit(shouldReset = true) {
+  state.editingCategoryId = null;
+  els.categorySubmitBtn.textContent = "Agregar categoria";
+  els.cancelCategoryEditBtn.hidden = true;
+  if (shouldReset) els.categoryForm.reset();
+}
+
+async function deleteCategory(id) {
+  const category = categories.find((item) => item.id === id);
+  if (!category || ["imprevistos", "ingreso"].includes(id)) return;
+  const fallbackCategory = category.kind === "income" ? "ingreso" : "imprevistos";
+  const fallbackName = category.kind === "income" ? "Ingreso" : "Imprevistos";
+  const confirmed = await confirmDeleteApp(`Vas a eliminar la categoria "${category.name}". Los movimientos pasaran a ${fallbackName}.`, "Eliminar categoria");
+  if (!confirmed) return;
+  state.data.customCategories = state.data.customCategories.filter((item) => item.id !== id);
+  if ([...expenseCategories, ...incomeCategories].some((item) => item.id === id)) {
+    state.data.deletedDefaultCategories = mergeUnique(state.data.deletedDefaultCategories || [], [id]);
+  }
+  state.data.movements = state.data.movements.map((movement) => (
+    movement.category === id ? { ...movement, category: fallbackCategory } : movement
+  ));
+  state.data.budgetHistory = (state.data.budgetHistory || []).filter((entry) => entry.categoryId !== id);
+  state.data.merchantRules = (state.data.merchantRules || []).map((rule) => (
+    rule.category === id ? { ...rule, category: fallbackCategory } : rule
+  ));
+  categories = mergeCategories(state.data.customCategories);
+  syncBudgetsForActiveMonth();
+  saveData();
+  renderOptions();
+  render();
+}
+
+function handleCategoryAction(event) {
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+  if (button.dataset.action === "edit-category") startCategoryEdit(button.dataset.id);
+  if (button.dataset.action === "delete-category") deleteCategory(button.dataset.id);
 }
 
 function saveSavingTransfer(event) {
   event.preventDefault();
   const account = state.data.savingsAccounts.find((item) => item.id === els.savingAccountInput.value);
   if (!account) return;
+  const action = new FormData(els.savingForm).get("savingAction");
+  const amount = Number(els.savingAmountInput.value);
+  const saved = getSavedForAccount(account.id);
+  const existing = state.data.movements.find((item) => item.id === state.editingSavingMovementId);
+  const existingAmount = existing?.savingAccountId === account.id ? existing.amount : 0;
+  const availableForWithdrawal = saved - existingAmount;
+  if (action === "withdraw" && amount > availableForWithdrawal) {
+    alert("No hay suficiente dinero en esa meta para retirar ese monto.");
+    return;
+  }
+  const signedAmount = action === "withdraw" ? -amount : amount;
 
-  state.data.movements.unshift(makeMovement(
-    "saving",
-    els.savingAmountInput.value,
-    els.savingDateInput.value,
-    "ahorro",
-    account.name,
-    "Transferencia a ahorro",
-    null,
-    account.id,
-  ));
+  if (existing) {
+    existing.amount = signedAmount;
+    existing.date = els.savingDateInput.value;
+    existing.merchant = account.name;
+    existing.note = action === "withdraw" ? "Retiro desde ahorro" : "Transferencia a ahorro";
+    existing.savingAccountId = account.id;
+  } else {
+    state.data.movements.unshift(makeMovement(
+      "saving",
+      signedAmount,
+      els.savingDateInput.value,
+      "ahorro",
+      account.name,
+      action === "withdraw" ? "Retiro desde ahorro" : "Transferencia a ahorro",
+      null,
+      account.id,
+    ));
+  }
 
+  const returnView = state.savingEditReturnView || "savings";
+  cancelSavingTransferEdit(false);
   saveData();
   els.savingForm.reset();
   setToday();
   render();
+  switchView(returnView);
+  state.savingEditReturnView = "savings";
+}
+
+function startSavingTransferEdit(id) {
+  const movement = state.data.movements.find((item) => item.id === id);
+  if (!movement || movement.type !== "saving") return;
+  state.editingSavingMovementId = id;
+  state.savingEditReturnView = getActiveView();
   switchView("savings");
+  els.savingAccountInput.value = movement.savingAccountId;
+  els.savingAmountInput.value = Math.abs(movement.amount);
+  els.savingDateInput.value = movement.date;
+  const actionInput = document.querySelector(`input[name="savingAction"][value="${movement.amount < 0 ? "withdraw" : "deposit"}"]`);
+  if (actionInput) actionInput.checked = true;
+  els.savingSubmitBtn.textContent = "Guardar ahorro";
+  els.cancelSavingEditBtn.hidden = false;
+}
+
+function cancelSavingTransferEdit(shouldReset = true, shouldReturn = false) {
+  const returnView = state.savingEditReturnView || "savings";
+  state.editingSavingMovementId = null;
+  state.savingEditReturnView = "savings";
+  els.savingSubmitBtn.textContent = "Mover a ahorro";
+  els.cancelSavingEditBtn.hidden = true;
+  if (shouldReset) {
+    els.savingForm.reset();
+    setToday();
+  }
+  if (shouldReturn) switchView(returnView);
 }
 
 function saveSavingGoal(event) {
@@ -323,18 +640,83 @@ function saveSavingGoal(event) {
   const name = els.savingGoalNameInput.value.trim();
   const target = Number(els.savingGoalTargetInput.value);
   if (!name || !target) return;
+  const existing = state.data.savingsAccounts.find((item) => item.id === state.editingSavingGoalId);
 
-  state.data.savingsAccounts.push({
-    id: createId(),
-    name,
-    target,
-    createdAt: new Date().toISOString(),
-  });
+  if (existing) {
+    existing.name = name;
+    existing.target = target;
+    state.data.movements = state.data.movements.map((movement) => (
+      movement.savingAccountId === existing.id ? { ...movement, merchant: name } : movement
+    ));
+    cancelSavingGoalEdit(false);
+  } else {
+    state.data.savingsAccounts.push({
+      id: createId(),
+      name,
+      target,
+      createdAt: new Date().toISOString(),
+    });
+  }
 
   saveData();
   els.savingGoalForm.reset();
   renderSavingOptions();
   render();
+}
+
+function startSavingGoalEdit(id) {
+  const account = state.data.savingsAccounts.find((item) => item.id === id);
+  if (!account) return;
+  state.editingSavingGoalId = id;
+  switchView("savings");
+  els.savingGoalNameInput.value = account.name;
+  els.savingGoalTargetInput.value = account.target;
+  els.savingGoalSubmitBtn.textContent = "Guardar meta";
+  els.cancelSavingGoalEditBtn.hidden = false;
+}
+
+function cancelSavingGoalEdit(shouldReset = true) {
+  state.editingSavingGoalId = null;
+  els.savingGoalSubmitBtn.textContent = "Crear meta";
+  els.cancelSavingGoalEditBtn.hidden = true;
+  if (shouldReset) els.savingGoalForm.reset();
+}
+
+async function deleteSavingGoal(id) {
+  const account = state.data.savingsAccounts.find((item) => item.id === id);
+  if (!account) return;
+  const relatedMovements = state.data.movements.filter((movement) => movement.savingAccountId === id);
+  const confirmed = await confirmDeleteApp(
+    relatedMovements.length
+      ? `Eliminar la meta "${account.name}" y ${relatedMovements.length} movimiento(s) relacionados?`
+      : `Eliminar la meta "${account.name}"?`,
+    "Eliminar meta",
+  );
+  if (!confirmed) return;
+  state.data.savingsAccounts = state.data.savingsAccounts.filter((item) => item.id !== id);
+  state.data.movements = state.data.movements.filter((movement) => movement.savingAccountId !== id);
+  if (state.editingSavingGoalId === id) cancelSavingGoalEdit(false);
+  saveData();
+  renderSavingOptions();
+  render();
+}
+
+function startSavingWithdrawal(id) {
+  const account = state.data.savingsAccounts.find((item) => item.id === id);
+  if (!account) return;
+  switchView("savings");
+  els.savingAccountInput.value = id;
+  const withdrawInput = document.querySelector('input[name="savingAction"][value="withdraw"]');
+  if (withdrawInput) withdrawInput.checked = true;
+  els.savingAmountInput.focus();
+}
+
+function handleSavingGoalAction(event) {
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+  if (button.dataset.action === "withdraw-saving") startSavingWithdrawal(button.dataset.id);
+  if (button.dataset.action === "edit-saving-goal") startSavingGoalEdit(button.dataset.id);
+  if (button.dataset.action === "delete-saving-goal") deleteSavingGoal(button.dataset.id);
 }
 
 function previewReceiptImage(event) {
@@ -355,48 +737,53 @@ function previewReceiptImage(event) {
   });
 }
 
-function saveMakeWebhook() {
-  localStorage.setItem("cuenta-clara-make-webhook", els.makeWebhookInput.value.trim());
-}
-
-function saveGeminiApiKey() {
-  localStorage.setItem("cuenta-clara-gemini-api-key", els.geminiApiKeyInput.value.trim());
-}
-
 async function analyzeReceipt() {
   const text = els.receiptTextInput.value.trim();
   const image = els.receiptPreview.src || null;
   if (!text && !image) return;
 
-  saveMakeWebhook();
-  saveGeminiApiKey();
-  const webhookUrl = els.makeWebhookInput.value.trim();
-  const geminiApiKey = els.geminiApiKeyInput.value.trim();
   els.receiptStatus.textContent = "Analizando factura...";
   els.analyzeReceiptBtn.disabled = true;
 
   try {
-    const parsed = webhookUrl
-      ? await analyzeReceiptWithMake(webhookUrl, text, image)
-      : geminiApiKey
-        ? await analyzeReceiptWithGemini(geminiApiKey, text, image)
-        : await analyzeReceiptWithFreeOcr(text, image);
+    const parsed = await analyzeReceiptWithBackend(text, image);
     state.pendingReceipt = { ...parsed, image };
     renderReceiptResult(parsed);
-    els.receiptStatus.textContent = webhookUrl
-      ? "Factura analizada con Make. Revisa antes de guardar."
-      : geminiApiKey
-        ? "Factura analizada con Gemini. Revisa antes de guardar."
-        : "Factura analizada con OCR gratis. Revisa antes de guardar.";
+    els.receiptStatus.textContent = "Factura analizada. Revisa antes de guardar.";
   } catch (error) {
     console.error(error);
     const parsed = image ? await analyzeReceiptWithFreeOcr(text, image).catch(() => parseReceiptText(text)) : parseReceiptText(text);
     state.pendingReceipt = { ...parsed, image };
     renderReceiptResult(parsed);
-    els.receiptStatus.textContent = "Make no respondio bien. Use analisis local como respaldo.";
+    els.receiptStatus.textContent = "Use analisis local como respaldo.";
   } finally {
     els.analyzeReceiptBtn.disabled = false;
   }
+}
+
+async function analyzeReceiptWithBackend(text, image) {
+  if (!window.location.protocol.startsWith("http")) {
+    throw new Error("El backend protegido solo funciona cuando la app esta publicada.");
+  }
+
+  const response = await fetch("/api/analyze-receipt", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text,
+      image,
+      categories: getReceiptCategories(),
+      merchantRules: getMerchantRulesForAi(),
+      classificationGuide: buildClassificationGuide(),
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || `Backend respondio con estado ${response.status}`);
+  }
+
+  return normalizeReceiptAiResult(data, text);
 }
 
 async function analyzeReceiptWithMake(webhookUrl, text, image) {
@@ -441,6 +828,23 @@ async function analyzeReceiptWithMake(webhookUrl, text, image) {
       ? (receiptData.productos || receiptData.items).map((item) => typeof item === "string" ? item : item.nombre || item.name).filter(Boolean)
       : parsed.items,
     rawText: ocrText,
+  };
+}
+
+function normalizeReceiptAiResult(receiptData, fallbackText = "") {
+  const parsed = parseReceiptText(receiptData.text || receiptData.rawText || fallbackText);
+  const products = receiptData.productos || receiptData.items || [];
+
+  return {
+    ...parsed,
+    merchant: receiptData.comercio || receiptData.merchant || parsed.merchant,
+    date: normalizeIncomingDate(receiptData.fecha || receiptData.date) || parsed.date,
+    amount: Number(receiptData.total || receiptData.amount || parsed.amount || 0),
+    category: normalizeCategory(receiptData.categoria || receiptData.category || parsed.category),
+    items: Array.isArray(products)
+      ? products.map((item) => typeof item === "string" ? item : item.nombre || item.name).filter(Boolean)
+      : parsed.items,
+    rawText: receiptData.text || receiptData.rawText || fallbackText,
   };
 }
 
@@ -525,7 +929,7 @@ function buildReceiptAiPrompt(userText = "") {
 
 function getReceiptCategories() {
   return categories
-    .filter((category) => !["ingreso", "ahorro"].includes(category.id))
+    .filter((category) => category.kind === "expense")
     .map((category) => ({
       id: category.id,
       name: category.name,
@@ -882,10 +1286,10 @@ function detectMerchant(text) {
 function detectCategory(text) {
   const normalized = text.toLowerCase();
   if (/farmavalue|farmacia|medicina|norbyl/i.test(normalized)) return "salud";
-  if (/mxm|supermercado|avenida 10|superavenida|walmart|masxmenos|maxipali|pali|automercado|ampm|fm tibas|pozuelto|pozuelo|galleta|coco|leche|queso|aguacate|naranja|platano/i.test(normalized)) return "supermercado";
-  if (/kiss makeup|makeup|maquillaje|keratina|shampoo/i.test(normalized)) return "otros";
+  if (/mxm|supermercado|avenida 10|superavenida|walmart|masxmenos|maxipali|pali|automercado|ampm|fm tibas|pozuelto|pozuelo|galleta|coco|leche|queso|aguacate|naranja|platano/i.test(normalized)) return "alimentacion";
+  if (/kiss makeup|makeup|maquillaje|keratina|shampoo/i.test(normalized)) return "compras-personales";
   const found = categories.find((category) => category.keywords.some((keyword) => normalized.includes(keyword)));
-  return found ? found.id : "otros";
+  return found ? found.id : "imprevistos";
 }
 
 function normalizeCategory(value) {
@@ -894,25 +1298,49 @@ function normalizeCategory(value) {
     farmacia: "salud",
     medicina: "salud",
     medicamentos: "salud",
-    belleza: "otros",
-    maquillaje: "otros",
-    cosmeticos: "otros",
-    cosmetica: "otros",
-    supermercado: "supermercado",
-    super: "supermercado",
-    comida: "comida",
-    restaurante: "comida",
+    belleza: "compras-personales",
+    maquillaje: "compras-personales",
+    cosmeticos: "compras-personales",
+    cosmetica: "compras-personales",
+    supermercado: "alimentacion",
+    super: "alimentacion",
+    alimentos: "alimentacion",
+    alimentacion: "alimentacion",
+    alimentación: "alimentacion",
+    comida: "comida-fuera",
+    restaurante: "comida-fuera",
+    restaurantes: "comida-fuera",
+    ingreso: "ingreso",
+    ingresos: "ingreso",
+    salario: "salario",
+    sueldos: "salario",
+    sueldo: "salario",
+    quincena: "salario",
+    nomina: "salario",
+    "nómina": "salario",
+    freelance: "negocio",
+    negocio: "negocio",
+    comision: "negocio",
+    comisiones: "negocio",
+    reembolso: "reembolso",
     salud: "salud",
-    casa: "casa",
+    casa: "vivienda",
+    alquiler: "vivienda",
+    vivienda: "vivienda",
+    hogar: "hogar",
     transporte: "transporte",
-    servicios: "servicios",
-    entretenimiento: "entretenimiento",
+    servicios: "vivienda",
+    internet: "telefono-internet",
+    telefono: "telefono-internet",
+    teléfono: "telefono-internet",
+    entretenimiento: "ocio-salidas",
     ahorro: "ahorro",
-    otros: "otros",
+    otros: "imprevistos",
+    imprevistos: "imprevistos",
   };
 
   if (categories.some((category) => category.id === normalized)) return normalized;
-  return aliases[normalized] || "otros";
+  return aliases[normalized] || "imprevistos";
 }
 
 function normalizeMerchantName(value) {
@@ -930,15 +1358,20 @@ function normalizeMerchantKey(value) {
 }
 
 function mergeCategories(customCategories = []) {
-  const byId = new Map(defaultCategories.map((category) => [category.id, category]));
+  const deleted = new Set(state?.data?.deletedDefaultCategories || []);
+  const byId = new Map([...expenseCategories, ...incomeCategories]
+    .filter((category) => !deleted.has(category.id))
+    .map((category) => [category.id, category]));
   customCategories.forEach((category, index) => {
     const id = slugifyCategory(category.id || category.name);
-    if (!id || ["ingreso", "ahorro"].includes(id)) return;
+    if (!id || ["ahorro"].includes(id)) return;
+    const kind = category.kind === "income" ? "income" : "expense";
     byId.set(id, {
       id,
       name: category.name || toTitleCase(id.replace(/-/g, " ")),
       color: category.color || pickCategoryColor(index),
       keywords: Array.isArray(category.keywords) ? category.keywords : [],
+      kind,
     });
   });
   return [...byId.values()];
@@ -1029,6 +1462,7 @@ function resetData() {
 
 function render() {
   const monthMovements = getMonthMovements();
+  syncBudgetsForActiveMonth();
   const totals = calculateTotals(monthMovements);
   const available = totals.income - totals.expense - totals.saving;
 
@@ -1043,6 +1477,7 @@ function render() {
   renderBudgetSummary(monthMovements);
   renderCategoryBreakdown(monthMovements);
   renderMonthlyChart(totals);
+  renderAlerts(monthMovements);
   renderRecent(monthMovements);
   renderBudgetList(monthMovements);
   renderSavings();
@@ -1050,7 +1485,8 @@ function render() {
 }
 
 function renderBudgetSummary(movements) {
-  const budgetTotal = Object.values(state.data.budgets).reduce((sum, amount) => sum + Number(amount || 0), 0);
+  const budgets = getBudgetSnapshotForMonth(monthKey(state.activeMonth));
+  const budgetTotal = Object.values(budgets).reduce((sum, amount) => sum + Number(amount || 0), 0);
   const spent = movements.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
   const percent = budgetTotal ? Math.round((spent / budgetTotal) * 100) : 0;
 
@@ -1070,6 +1506,58 @@ function renderBudgetSummary(movements) {
     els.budgetStatus.textContent = `${percent}% usado`;
     els.budgetHint.textContent = `Se pasaron por ${money(spent - budgetTotal)} este mes.`;
   }
+}
+
+function renderAlerts(movements) {
+  const alerts = [];
+  const expenses = movements.filter((item) => item.type === "expense");
+  const byCategory = groupExpensesByCategory(expenses);
+  const budgets = getBudgetSnapshotForMonth(monthKey(state.activeMonth));
+  const currentDate = new Date();
+  const sameMonth = state.activeMonth.getFullYear() === currentDate.getFullYear() && state.activeMonth.getMonth() === currentDate.getMonth();
+  const daysInMonth = new Date(state.activeMonth.getFullYear(), state.activeMonth.getMonth() + 1, 0).getDate();
+  const daysLeft = sameMonth ? Math.max(daysInMonth - currentDate.getDate(), 1) : daysInMonth;
+  const budgetTotal = Object.values(budgets).reduce((sum, amount) => sum + Number(amount || 0), 0);
+  const spentTotal = expenses.reduce((sum, item) => sum + item.amount, 0);
+  const remainingBudget = budgetTotal - spentTotal;
+
+  Object.entries(budgets).forEach(([categoryId, limit]) => {
+    const limitValue = Number(limit || 0);
+    if (!limitValue) return;
+    const spent = Number(byCategory[categoryId] || 0);
+    const percent = Math.round((spent / limitValue) * 100);
+    if (percent >= 100) {
+      alerts.push({ tone: "danger", title: `Superaste presupuesto en ${categoryName(categoryId).toLowerCase()}`, text: `Llevas ${money(spent)} de ${money(limitValue)}.` });
+    } else if (percent >= 80) {
+      alerts.push({ tone: "warning", title: `Ya gastaste ${percent}% en ${categoryName(categoryId).toLowerCase()}`, text: `Vas en ${money(spent)} de ${money(limitValue)}.` });
+    }
+  });
+
+  const currentSaving = movements.filter((item) => item.type === "saving").reduce((sum, item) => sum + item.amount, 0);
+  const previousMonth = new Date(state.activeMonth.getFullYear(), state.activeMonth.getMonth() - 1, 1);
+  const previousSaving = calculateTotals(getMovementsForMonthKey(monthKey(previousMonth))).saving;
+  if (previousSaving > 0 && currentSaving < previousSaving) {
+    alerts.push({ tone: "info", title: "Este mes estas ahorrando menos", text: `Llevan ${money(currentSaving)} en ahorro frente a ${money(previousSaving)} el mes pasado.` });
+  }
+
+  if (budgetTotal > 0) {
+    alerts.push({
+      tone: remainingBudget < 0 ? "danger" : "success",
+      title: `Te quedan ${money(Math.max(remainingBudget / daysLeft, 0))} por dia`,
+      text: remainingBudget >= 0
+        ? `Quedan ${money(remainingBudget)} del presupuesto total.`
+        : `Ya van ${money(Math.abs(remainingBudget))} por encima del presupuesto total.`,
+    });
+  }
+
+  els.alertsList.innerHTML = alerts.length
+    ? alerts.map((alert) => `
+        <article class="alert-card ${alert.tone}">
+          <strong>${escapeHtml(alert.title)}</strong>
+          <p>${escapeHtml(alert.text)}</p>
+        </article>
+      `).join("")
+    : `<div class="empty">Todavia no hay alertas que mostrar.</div>`;
 }
 
 function renderCategoryBreakdown(movements) {
@@ -1118,19 +1606,44 @@ function renderMonthlyChart(totals) {
 }
 
 function renderRecent(movements) {
-  const recent = [...movements].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+  const recent = [...movements].sort((a, b) => b.date.localeCompare(a.date));
+  els.monthlyMovementsCount.textContent = `${recent.length} ${recent.length === 1 ? "movimiento" : "movimientos"}`;
   els.recentMovements.innerHTML = recent.length
     ? recent.map(renderMovementRow).join("")
-    : `<div class="empty">Agreguen el primer movimiento para ver el resumen.</div>`;
+    : `<div class="empty">Este mes todavia no tiene movimientos.</div>`;
 }
 
 function renderBudgetList(movements) {
   const expenses = movements.filter((item) => item.type === "expense");
   const byCategory = groupExpensesByCategory(expenses);
-  const entries = categories.filter((category) => !["ingreso", "ahorro"].includes(category.id));
+  const selectedKind = getSelectedCategoryKind();
+  const entries = categories.filter((category) => category.kind === selectedKind);
+  const expenseEntries = categories.filter((category) => category.kind === "expense");
+  const budgets = getBudgetSnapshotForMonth(monthKey(state.activeMonth));
+  const kindLabel = selectedKind === "income" ? "Ingresos" : "Gastos";
 
-  els.budgetList.innerHTML = entries.map((category) => {
-    const limit = Number(state.data.budgets[category.id] || 0);
+  els.categoryManageList.innerHTML = `
+    <article class="budget-row">
+      <header>
+        <strong>Categorias de ${kindLabel.toLowerCase()}</strong>
+        <span>${entries.length} activas</span>
+      </header>
+      <div class="category-manage-list">
+        ${entries.map((category) => `
+          <div class="category-manage-row">
+            <span><i style="--color: ${category.color}"></i>${escapeHtml(category.name)}</span>
+            <div class="row-actions">
+              <button class="mini-button icon-button-small" data-action="edit-category" data-id="${category.id}" aria-label="Editar ${escapeHtml(category.name)}" title="Editar">✏️</button>
+              <button class="mini-button icon-button-small danger" data-action="delete-category" data-id="${category.id}" aria-label="Eliminar ${escapeHtml(category.name)}" title="Eliminar" ${["imprevistos", "ingreso"].includes(category.id) ? "disabled" : ""}>🗑️</button>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    </article>
+  `;
+
+  els.budgetList.innerHTML = expenseEntries.map((category) => {
+    const limit = Number(budgets[category.id] || 0);
     const spent = Number(byCategory[category.id] || 0);
     const percent = limit ? Math.round((spent / limit) * 100) : 0;
     const color = percent > 100 ? "var(--rose)" : percent > 75 ? "var(--gold)" : category.color;
@@ -1158,12 +1671,13 @@ function renderSavings() {
   const totalSaved = accounts.reduce((sum, account) => sum + account.saved, 0);
   els.savingStatusLabel.textContent = `${money(totalSaved)} ahorrados`;
 
-  const html = accounts.map((account) => renderSavingRow(account)).join("");
-  els.savingsPreview.innerHTML = html || `<div class="empty">Creen su primera meta de ahorro.</div>`;
-  els.savingsList.innerHTML = html || `<div class="empty">Creen su primera meta de ahorro.</div>`;
+  const previewHtml = accounts.map((account) => renderSavingRow(account, false)).join("");
+  const listHtml = accounts.map((account) => renderSavingRow(account, true)).join("");
+  els.savingsPreview.innerHTML = previewHtml || `<div class="empty">Creen su primera meta de ahorro.</div>`;
+  els.savingsList.innerHTML = listHtml || `<div class="empty">Creen su primera meta de ahorro.</div>`;
 }
 
-function renderSavingRow(account) {
+function renderSavingRow(account, interactive = false) {
   return `
     <article class="saving-row">
       <header>
@@ -1172,6 +1686,11 @@ function renderSavingRow(account) {
       </header>
       <p>${money(account.saved)} ahorrados de ${money(account.target)}</p>
       <div class="bar"><span style="--width: ${account.percent}%; --color: var(--mint)"></span></div>
+      ${interactive ? `<div class="row-actions saving-actions">
+        <button class="mini-button icon-button-small" data-action="withdraw-saving" data-id="${account.id}" aria-label="Retirar de ${escapeHtml(account.name)}" title="Retirar">↩️</button>
+        <button class="mini-button icon-button-small" data-action="edit-saving-goal" data-id="${account.id}" aria-label="Editar ${escapeHtml(account.name)}" title="Editar">✏️</button>
+        <button class="mini-button icon-button-small danger" data-action="delete-saving-goal" data-id="${account.id}" aria-label="Eliminar ${escapeHtml(account.name)}" title="Eliminar">🗑️</button>
+      </div>` : ""}
     </article>
   `;
 }
@@ -1179,7 +1698,11 @@ function renderSavingRow(account) {
 function renderHistory() {
   const type = els.historyTypeFilter.value;
   const category = els.historyCategoryFilter.value;
-  const rows = getMonthMovements()
+  const dateFrom = els.historyDateFrom.value;
+  const dateTo = els.historyDateTo.value;
+  const rows = state.data.movements
+    .filter((item) => !dateFrom || item.date >= dateFrom)
+    .filter((item) => !dateTo || item.date <= dateTo)
     .filter((item) => type === "all" || item.type === type)
     .filter((item) => category === "all" || item.category === category)
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -1193,7 +1716,7 @@ function renderMovementRow(item) {
   const config = {
     income: { sign: "+", className: "income", label: "Ingreso" },
     expense: { sign: "-", className: "expense", label: "Gasto" },
-    saving: { sign: "→", className: "saving", label: "Ahorro" },
+    saving: { sign: item.amount < 0 ? "←" : "→", className: "saving", label: item.amount < 0 ? "Retiro de ahorro" : "Ahorro" },
   }[item.type];
 
   return `
@@ -1202,13 +1725,23 @@ function renderMovementRow(item) {
         <strong>${escapeHtml(item.merchant || categoryName(item.category))}</strong>
         <p>${displayDate(item.date)} · ${config.label} · ${categoryName(item.category)}${item.note ? ` · ${escapeHtml(item.note)}` : ""}</p>
       </div>
-      <strong class="${config.className}">${config.sign}${money(item.amount)}</strong>
+      <div class="movement-side">
+        <strong class="${config.className}">${config.sign}${money(Math.abs(item.amount))}</strong>
+        <div class="row-actions">
+          <button class="mini-button icon-button-small" data-action="edit-movement" data-id="${item.id}" aria-label="Editar movimiento" title="Editar">✏️</button>
+          <button class="mini-button icon-button-small danger" data-action="delete-movement" data-id="${item.id}" aria-label="Eliminar movimiento" title="Eliminar">🗑️</button>
+        </div>
+      </div>
     </article>
   `;
 }
 
 function getMonthMovements() {
   const key = monthKey(state.activeMonth);
+  return getMovementsForMonthKey(key);
+}
+
+function getMovementsForMonthKey(key) {
   return state.data.movements.filter((item) => item.date.startsWith(key));
 }
 
@@ -1253,11 +1786,13 @@ function budgetMessage(percent, remaining) {
 }
 
 function categoryName(id) {
-  return categories.find((category) => category.id === id)?.name || "Otros";
+  const categoryId = normalizeCategory(id);
+  return categories.find((category) => category.id === categoryId)?.name || "Otros";
 }
 
 function categoryColor(id) {
-  return categories.find((category) => category.id === id)?.color || "#6f8279";
+  const categoryId = normalizeCategory(id);
+  return categories.find((category) => category.id === categoryId)?.color || "#6f8279";
 }
 
 function monthKey(date) {

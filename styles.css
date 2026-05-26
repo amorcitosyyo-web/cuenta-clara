@@ -51,7 +51,7 @@ button {
 
 .topbar {
   display: grid;
-  grid-template-columns: 46px 1fr 46px;
+  grid-template-columns: 1fr;
   align-items: center;
   gap: 14px;
   padding: 8px 0 18px;
@@ -377,7 +377,8 @@ button {
 .movement-list,
 .budget-list,
 .savings-list,
-.savings-strip {
+.savings-strip,
+.alert-list {
   display: grid;
   gap: 10px;
 }
@@ -416,6 +417,44 @@ button {
 
 .movement-row strong:last-child {
   text-align: right;
+}
+
+.movement-side {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.row-actions,
+.saving-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.mini-button {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.icon-button-small {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  padding: 0;
+}
+
+.mini-button.danger,
+.primary-button.danger {
+  background: rgba(255, 111, 118, 0.16);
+  color: var(--rose);
+}
+
+.mini-button:disabled {
+  opacity: 0.35;
 }
 
 .income {
@@ -498,6 +537,7 @@ button {
 .field input,
 .field select,
 .field textarea,
+.filters input,
 .filters select {
   width: 100%;
   border: 1px solid var(--line);
@@ -536,6 +576,89 @@ select option {
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.08);
   color: var(--mint);
+}
+
+.form-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.category-manage-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.category-manage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.category-manage-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.category-manage-row i {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--color);
+}
+
+.alert-card {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 13px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.alert-card p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.alert-card.warning {
+  border-color: rgba(255, 189, 89, 0.45);
+}
+
+.alert-card.danger {
+  border-color: rgba(255, 111, 118, 0.45);
+}
+
+.alert-card.success {
+  border-color: rgba(216, 255, 85, 0.35);
+}
+
+.confirm-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 12, 10, 0.72);
+  backdrop-filter: blur(14px);
+}
+
+.confirm-modal[hidden] {
+  display: none;
+}
+
+.confirm-card {
+  width: min(100%, 420px);
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(11, 43, 38, 0.98);
+  box-shadow: var(--shadow);
 }
 
 .receipt-upload {
@@ -698,7 +821,7 @@ select option {
   }
 
   .topbar {
-    grid-template-columns: 44px 1fr 44px;
+    grid-template-columns: 1fr;
   }
 
   .tabs {
