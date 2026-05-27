@@ -25,6 +25,14 @@ const incomeCategories = [
 
 let categories = [...expenseCategories, ...incomeCategories];
 
+const remote = {
+  enabled: false,
+  ready: false,
+  client: null,
+  user: null,
+  saveTimer: null,
+};
+
 const state = {
   activeMonth: new Date(2026, 4, 1),
   editingMovementId: null,
@@ -111,17 +119,25 @@ const els = {
   confirmMessage: document.querySelector("#confirmMessage"),
   confirmCancelBtn: document.querySelector("#confirmCancelBtn"),
   confirmOkBtn: document.querySelector("#confirmOkBtn"),
+  authScreen: document.querySelector("#authScreen"),
+  authForm: document.querySelector("#authForm"),
+  authEmailInput: document.querySelector("#authEmailInput"),
+  authPasswordInput: document.querySelector("#authPasswordInput"),
+  authStatus: document.querySelector("#authStatus"),
+  signOutBtn: document.querySelector("#signOutBtn"),
 };
 
 let confirmDeleteResolver = null;
 
 init();
 
-function init() {
+async function init() {
   window.cuentaClaraDebug = { parseReceiptText };
+  bindEvents();
+  const remoteReady = await setupRemoteSync();
+  if (remoteReady === "locked") return;
   populateSelects();
   setToday();
-  bindEvents();
   saveData();
   render();
 }
@@ -178,6 +194,8 @@ function bindEvents() {
   els.confirmCancelBtn.addEventListener("click", () => resolveDeleteConfirm(false));
   els.confirmOkBtn.addEventListener("click", () => resolveDeleteConfirm(true));
   els.receiptImageInput.addEventListener("change", previewReceiptImage);
+  els.authForm.addEventListener("submit", handleAuthSubmit);
+  els.signOutBtn.addEventListener("click", signOut);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !els.confirmModal.hidden) resolveDeleteConfirm(false);
   });
@@ -200,6 +218,141 @@ function resolveDeleteConfirm(shouldDelete) {
   confirmDeleteResolver = null;
   els.confirmModal.hidden = true;
   resolve(shouldDelete);
+}
+
+async function setupRemoteSync() {
+  if (!location.protocol.startsWith("http") || !window.supabase) {
+    showApp();
+    return "local";
+  }
+
+  try {
+    const configResponse = await fetch("/api/supabase-config");
+    const config = await configResponse.json();
+    if (!config.enabled) {
+      showApp();
+      return "local";
+    }
+
+    remote.enabled = true;
+    remote.client = window.supabase.createClient(config.url, config.anonKey);
+    const { data } = await remote.client.auth.getSession();
+    if (!data.session?.user) {
+      showAuthGate("Inicia sesion para ver los datos privados.");
+      return "locked";
+    }
+
+    remote.user = data.session.user;
+    await loadRemoteData();
+    remote.ready = true;
+    showApp();
+    remote.client.auth.onAuthStateChange((_event, session) => {
+      if (!session?.user) {
+        remote.user = null;
+        remote.ready = false;
+        showAuthGate("Sesion cerrada.");
+      }
+    });
+    return "remote";
+  } catch (error) {
+    console.error(error);
+    showAuthGate("No pude conectar con Supabase. Revisa la configuracion.");
+    return "locked";
+  }
+}
+
+function showAuthGate(message = "") {
+  document.body.classList.add("auth-locked");
+  els.authScreen.hidden = false;
+  els.signOutBtn.hidden = true;
+  if (message) els.authStatus.textContent = message;
+}
+
+function showApp() {
+  document.body.classList.remove("auth-locked");
+  els.authScreen.hidden = true;
+  els.signOutBtn.hidden = !remote.enabled;
+}
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  if (!remote.client) return;
+  const submitter = event.submitter;
+  const action = submitter?.dataset.authAction || "signin";
+  const email = els.authEmailInput.value.trim();
+  const password = els.authPasswordInput.value;
+  els.authStatus.textContent = action === "signup" ? "Creando cuenta..." : "Entrando...";
+
+  const result = action === "signup"
+    ? await remote.client.auth.signUp({ email, password })
+    : await remote.client.auth.signInWithPassword({ email, password });
+
+  if (result.error) {
+    els.authStatus.textContent = result.error.message;
+    return;
+  }
+
+  if (!result.data.session?.user) {
+    els.authStatus.textContent = "Revisa tu correo para confirmar la cuenta y luego entra.";
+    return;
+  }
+
+  remote.user = result.data.session.user;
+  await loadRemoteData();
+  remote.ready = true;
+  categories = mergeCategories(state.data.customCategories);
+  populateSelects();
+  setToday();
+  render();
+  showApp();
+}
+
+async function signOut() {
+  if (!remote.client) return;
+  await flushRemoteSave();
+  await remote.client.auth.signOut();
+  showAuthGate("Sesion cerrada.");
+}
+
+async function loadRemoteData() {
+  const { data, error } = await remote.client
+    .from("app_states")
+    .select("data")
+    .eq("user_id", remote.user.id)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  if (data?.data) {
+    state.data = normalizeData(data.data);
+    categories = mergeCategories(state.data.customCategories);
+    return;
+  }
+
+  state.data = normalizeData(loadData());
+  await remote.client.from("app_states").insert({
+    user_id: remote.user.id,
+    data: state.data,
+  });
+}
+
+function scheduleRemoteSave() {
+  if (!remote.enabled || !remote.ready || !remote.user || !remote.client) return;
+  clearTimeout(remote.saveTimer);
+  remote.saveTimer = setTimeout(() => {
+    flushRemoteSave().catch((error) => console.error("No se pudo sincronizar", error));
+  }, 500);
+}
+
+async function flushRemoteSave() {
+  if (!remote.enabled || !remote.ready || !remote.user || !remote.client) return;
+  clearTimeout(remote.saveTimer);
+  remote.saveTimer = null;
+  const { error } = await remote.client.from("app_states").upsert({
+    user_id: remote.user.id,
+    data: state.data,
+  });
+  if (error) throw error;
 }
 
 function populateSelects() {
@@ -345,6 +498,7 @@ function normalizeData(data) {
 
 function saveData() {
   localStorage.setItem("cuenta-clara-data", JSON.stringify(state.data));
+  scheduleRemoteSave();
 }
 
 function makeMovement(type, amount, date, category, merchant, note = "", receipt = null, savingAccountId = null) {
@@ -749,13 +903,13 @@ async function analyzeReceipt() {
     const parsed = await analyzeReceiptWithBackend(text, image);
     state.pendingReceipt = { ...parsed, image };
     renderReceiptResult(parsed);
-    els.receiptStatus.textContent = "Factura analizada. Revisa antes de guardar.";
+    els.receiptStatus.textContent = "Analizada con Gemini protegido. Revisa antes de guardar.";
   } catch (error) {
     console.error(error);
     const parsed = image ? await analyzeReceiptWithFreeOcr(text, image).catch(() => parseReceiptText(text)) : parseReceiptText(text);
     state.pendingReceipt = { ...parsed, image };
     renderReceiptResult(parsed);
-    els.receiptStatus.textContent = "Use analisis local como respaldo.";
+    els.receiptStatus.textContent = "Analizada con respaldo local. Revisa antes de guardar.";
   } finally {
     els.analyzeReceiptBtn.disabled = false;
   }

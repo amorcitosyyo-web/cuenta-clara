@@ -9,12 +9,34 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="app-shell">
+    <section class="auth-screen" id="authScreen" hidden>
+      <form class="auth-card" id="authForm">
+        <p class="eyebrow">Cuenta Clara privada</p>
+        <h1>Entrar a la cuenta</h1>
+        <p>Usen el mismo correo y contrasena para compartir los datos entre celulares.</p>
+        <label class="field">
+          <span>Correo</span>
+          <input id="authEmailInput" type="email" autocomplete="email" required />
+        </label>
+        <label class="field">
+          <span>Contrasena</span>
+          <input id="authPasswordInput" type="password" autocomplete="current-password" minlength="6" required />
+        </label>
+        <div class="form-actions">
+          <button class="primary-button" type="submit" data-auth-action="signin">Entrar</button>
+          <button class="secondary-button" type="submit" data-auth-action="signup">Crear cuenta</button>
+        </div>
+        <p class="status-text" id="authStatus">Tus datos quedan protegidos con login.</p>
+      </form>
+    </section>
+
+    <div class="app-shell" id="appShell">
       <header class="topbar">
         <div>
           <p class="eyebrow">Cuenta compartida</p>
           <h1>Hola, Cuenta Clara</h1>
         </div>
+        <button class="ghost-button sign-out-button" id="signOutBtn" type="button" hidden>Salir</button>
       </header>
 
       <main>
@@ -325,6 +347,7 @@
       </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./app.js"></script>
   </body>
 </html>
