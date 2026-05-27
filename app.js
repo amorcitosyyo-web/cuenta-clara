@@ -84,7 +84,9 @@ const els = {
   receiptTotal: document.querySelector("#receiptTotal"),
   receiptCategory: document.querySelector("#receiptCategory"),
   receiptItems: document.querySelector("#receiptItems"),
+  receiptNote: document.querySelector("#receiptNote"),
   saveReceiptBtn: document.querySelector("#saveReceiptBtn"),
+  cancelReceiptBtn: document.querySelector("#cancelReceiptBtn"),
   budgetForm: document.querySelector("#budgetForm"),
   budgetCategoryInput: document.querySelector("#budgetCategoryInput"),
   budgetAmountInput: document.querySelector("#budgetAmountInput"),
@@ -185,6 +187,7 @@ function bindEvents() {
   els.savingsList.addEventListener("click", handleSavingGoalAction);
   els.analyzeReceiptBtn.addEventListener("click", analyzeReceipt);
   els.saveReceiptBtn.addEventListener("click", savePendingReceipt);
+  els.cancelReceiptBtn.addEventListener("click", resetReceiptFlow);
   els.historyTypeFilter.addEventListener("change", renderHistory);
   els.historyCategoryFilter.addEventListener("change", renderHistory);
   els.historyDateFrom.addEventListener("change", renderHistory);
@@ -358,6 +361,10 @@ async function flushRemoteSave() {
 function populateSelects() {
   populateMovementCategoryOptions();
   els.budgetCategoryInput.innerHTML = categories
+    .filter((category) => category.kind === "expense")
+    .map((category) => `<option value="${category.id}">${category.name}</option>`)
+    .join("");
+  els.receiptCategory.innerHTML = categories
     .filter((category) => category.kind === "expense")
     .map((category) => `<option value="${category.id}">${category.name}</option>`)
     .join("");
@@ -876,6 +883,8 @@ function handleSavingGoalAction(event) {
 function previewReceiptImage(event) {
   const file = event.target.files?.[0];
   if (!file) return;
+  state.pendingReceipt = null;
+  els.receiptResult.hidden = true;
 
   compressImage(file).then((dataUrl) => {
     els.receiptPreview.src = dataUrl;
@@ -916,7 +925,7 @@ async function analyzeReceipt() {
 }
 
 async function analyzeReceiptWithBackend(text, image) {
-  if (!window.location.protocol.startsWith("http")) {
+  if (!window.location.protocol.startsWith("http") || location.hostname === "localhost" || location.hostname === "127.0.0.1") {
     throw new Error("El backend protegido solo funciona cuando la app esta publicada.");
   }
 
@@ -979,7 +988,7 @@ async function analyzeReceiptWithMake(webhookUrl, text, image) {
     amount: Number(receiptData.total || receiptData.amount || parsed.amount || 0),
     category: normalizeCategory(receiptData.categoria || receiptData.category || parsed.category),
     items: Array.isArray(receiptData.productos || receiptData.items)
-      ? (receiptData.productos || receiptData.items).map((item) => typeof item === "string" ? item : item.nombre || item.name).filter(Boolean)
+      ? (receiptData.productos || receiptData.items).map(normalizeReceiptItem).filter((item) => item.name)
       : parsed.items,
     rawText: ocrText,
   };
@@ -996,7 +1005,7 @@ function normalizeReceiptAiResult(receiptData, fallbackText = "") {
     amount: Number(receiptData.total || receiptData.amount || parsed.amount || 0),
     category: normalizeCategory(receiptData.categoria || receiptData.category || parsed.category),
     items: Array.isArray(products)
-      ? products.map((item) => typeof item === "string" ? item : item.nombre || item.name).filter(Boolean)
+      ? products.map(normalizeReceiptItem).filter((item) => item.name)
       : parsed.items,
     rawText: receiptData.text || receiptData.rawText || fallbackText,
   };
@@ -1060,7 +1069,7 @@ async function analyzeReceiptWithGemini(apiKey, text, image) {
     amount: Number(receiptData.total || receiptData.amount || parsed.amount || 0),
     category: normalizeCategory(receiptData.categoria || receiptData.category || parsed.category),
     items: Array.isArray(receiptData.productos || receiptData.items)
-      ? (receiptData.productos || receiptData.items).map((item) => typeof item === "string" ? item : item.nombre || item.name).filter(Boolean)
+      ? (receiptData.productos || receiptData.items).map(normalizeReceiptItem).filter((item) => item.name)
       : parsed.items,
     rawText: text,
   };
@@ -1077,6 +1086,7 @@ function buildReceiptAiPrompt(userText = "") {
     "Reglas: usa colones; ignora clave numerica, consecutivo, cedula, telefono, caja, autorizacion, codigos de barras y textos legales.",
     "El total correcto esta cerca de Total, Total CRC, Total a Pagar, Monto Cancelado o Tarjeta si representa el monto final.",
     "No dupliques tarjeta si es el mismo monto. Usa la fecha real de compra.",
+    "En productos devuelve solo nombre y precio final del producto. No incluyas impuestos resumidos, claves, telefonos, autorizaciones, terminales ni textos legales.",
     `Texto opcional del usuario/OCR: ${userText || "Ninguno"}.`,
   ].join(" ");
 }
@@ -1295,6 +1305,42 @@ function parseReceiptText(text) {
   const items = detectItems(text);
 
   return { date, merchant, amount, category, items, rawText: text };
+}
+
+function normalizeReceiptItem(item) {
+  if (typeof item === "string") return { name: item.trim(), amount: null };
+  return {
+    name: String(item?.nombre || item?.name || "").trim(),
+    amount: Number(item?.precio || item?.amount || item?.monto || 0) || null,
+  };
+}
+
+function formatReceiptItems(items = []) {
+  return items.map((item) => {
+    const normalized = normalizeReceiptItem(item);
+    if (!normalized.name) return "";
+    return normalized.amount ? `${normalized.name} - ${money(normalized.amount)}` : normalized.name;
+  }).filter(Boolean).join("\n");
+}
+
+function parseReceiptItemsInput(value) {
+  return String(value || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const amountMatch = line.match(/(?:₡|\bcrc\b)?\s*(\d{1,3}(?:[.,]\d{3})+|\d+)(?:[.,](\d{2}))?\s*$/i);
+      if (!amountMatch) return { name: line, amount: null };
+      const amount = parseMoneyValue(amountMatch[0]);
+      const name = line.slice(0, amountMatch.index).replace(/[-–—:]+$/g, "").trim() || line;
+      return { name, amount };
+    });
+}
+
+function buildReceiptNote(items, note) {
+  const productLines = formatReceiptItems(items);
+  const extraNote = String(note || "").trim();
+  return [productLines, extraNote].filter(Boolean).join("\n");
 }
 
 function normalizeReceiptText(text) {
@@ -1570,19 +1616,33 @@ function cleanItemLine(line) {
 }
 
 function renderReceiptResult(parsed) {
-  els.receiptDate.textContent = displayDate(parsed.date);
-  els.receiptMerchant.textContent = parsed.merchant;
-  els.receiptTotal.textContent = money(parsed.amount);
-  els.receiptCategory.textContent = categoryName(parsed.category);
-  els.receiptItems.innerHTML = parsed.items.length
-    ? parsed.items.map((item) => `<span class="chip">${escapeHtml(item)}</span>`).join("")
-    : `<span class="chip">Sin productos detectados</span>`;
+  populateSelects();
+  els.receiptDate.value = parsed.date || toInputDate(new Date());
+  els.receiptMerchant.value = parsed.merchant || "";
+  els.receiptTotal.value = Math.round(Number(parsed.amount || 0));
+  els.receiptCategory.value = normalizeCategory(parsed.category);
+  els.receiptItems.value = formatReceiptItems(parsed.items || []);
+  els.receiptNote.value = parsed.note || "";
   els.receiptResult.hidden = false;
 }
 
 function savePendingReceipt() {
   if (!state.pendingReceipt) return;
-  const receipt = state.pendingReceipt;
+  const items = parseReceiptItemsInput(els.receiptItems.value);
+  const receipt = {
+    ...state.pendingReceipt,
+    date: els.receiptDate.value || toInputDate(new Date()),
+    merchant: els.receiptMerchant.value.trim() || "Factura",
+    amount: Number(els.receiptTotal.value || 0),
+    category: normalizeCategory(els.receiptCategory.value),
+    items,
+    note: els.receiptNote.value.trim(),
+  };
+  if (!receipt.amount) {
+    els.receiptStatus.textContent = "Revisa el total antes de guardar.";
+    els.receiptTotal.focus();
+    return;
+  }
   learnMerchantCategory(receipt.merchant, receipt.category);
   state.data.movements.unshift(makeMovement(
     "expense",
@@ -1590,17 +1650,25 @@ function savePendingReceipt() {
     receipt.date,
     receipt.category,
     receipt.merchant,
-    receipt.items.join(", "),
+    buildReceiptNote(receipt.items, receipt.note),
     receipt,
   ));
-  state.pendingReceipt = null;
-  els.receiptTextInput.value = "";
-  els.receiptImageInput.value = "";
-  els.receiptPreview.hidden = true;
-  els.receiptResult.hidden = true;
+  resetReceiptFlow("Gasto guardado desde factura.");
   saveData();
   render();
   switchView("dashboard");
+}
+
+function resetReceiptFlow(message = "Puedes subir otra factura.") {
+  state.pendingReceipt = null;
+  els.receiptTextInput.value = "";
+  els.receiptImageInput.value = "";
+  els.receiptPreview.removeAttribute("src");
+  els.receiptPreview.hidden = true;
+  els.receiptResult.hidden = true;
+  els.receiptItems.value = "";
+  els.receiptNote.value = "";
+  els.receiptStatus.textContent = message;
 }
 
 function resetData() {

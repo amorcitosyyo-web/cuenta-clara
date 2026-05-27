@@ -105,6 +105,7 @@ function buildPrompt(body) {
     "Formato exacto: {\"comercio\":\"\",\"fecha\":\"YYYY-MM-DD\",\"total\":0,\"categoria\":\"\",\"productos\":[{\"nombre\":\"\",\"cantidad\":null,\"precio\":null,\"categoria\":\"\"}],\"confianza\":0,\"observaciones\":\"\"}.",
     "Reglas: usa colones costarricenses; total numerico sin simbolos; usa la fecha real de compra; ignora clave numerica, consecutivo, cedula, telefono, caja, autorizacion, terminal, codigos de barras, QR y textos legales.",
     "El total correcto normalmente aparece cerca de Total, Total CRC, Total a Pagar, Monto Cancelado o Tarjeta CRC. Si Tarjeta repite el total, no lo dupliques.",
+    "En productos devuelve solo nombre y precio final del producto. No incluyas impuestos resumidos, claves, telefonos, autorizaciones, terminales ni textos legales.",
     `Texto escrito por el usuario u OCR local: ${body.text || ""}`,
   ].join("\n");
 }

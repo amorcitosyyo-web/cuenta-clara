@@ -205,16 +205,40 @@
             <p class="status-text" id="receiptStatus">La app usa el analisis local si el backend protegido no esta configurado.</p>
 
             <div class="receipt-result" id="receiptResult" hidden>
-              <h2>Resultado sugerido</h2>
-              <dl>
-                <div><dt>Fecha</dt><dd id="receiptDate">-</dd></div>
-                <div><dt>Comercio</dt><dd id="receiptMerchant">-</dd></div>
-                <div><dt>Total</dt><dd id="receiptTotal">-</dd></div>
-                <div><dt>Categoria</dt><dd id="receiptCategory">-</dd></div>
-              </dl>
-              <p class="label">Productos detectados</p>
-              <div class="chips" id="receiptItems"></div>
-              <button class="primary-button" id="saveReceiptBtn" type="button">Guardar como gasto</button>
+              <h2>Revisar antes de guardar</h2>
+              <div class="receipt-edit-grid">
+                <label class="field">
+                  <span>Fecha</span>
+                  <input id="receiptDate" type="date" />
+                </label>
+                <label class="field">
+                  <span>Comercio</span>
+                  <input id="receiptMerchant" type="text" />
+                </label>
+                <label class="field">
+                  <span>Total</span>
+                  <input id="receiptTotal" type="number" min="0" step="1" />
+                </label>
+                <label class="field">
+                  <span>Categoria</span>
+                  <select id="receiptCategory"></select>
+                </label>
+              </div>
+
+              <label class="field">
+                <span>Productos y montos</span>
+                <textarea id="receiptItems" rows="5" placeholder="Ej. Leche - ₡1,250&#10;Pan - ₡900"></textarea>
+              </label>
+
+              <label class="field">
+                <span>Nota opcional</span>
+                <textarea id="receiptNote" rows="2" placeholder="Ej. Compra semanal"></textarea>
+              </label>
+
+              <div class="form-actions">
+                <button class="primary-button" id="saveReceiptBtn" type="button">Guardar como gasto</button>
+                <button class="secondary-button" id="cancelReceiptBtn" type="button">Cancelar</button>
+              </div>
             </div>
           </div>
         </section>
