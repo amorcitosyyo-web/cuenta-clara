@@ -431,6 +431,11 @@ body.auth-locked .auth-screen {
   padding: 13px;
 }
 
+.due-payment {
+  border-color: rgba(255, 111, 118, 0.55);
+  background: rgba(255, 111, 118, 0.08);
+}
+
 .category-row header,
 .movement-row,
 .budget-row header,
@@ -465,6 +470,19 @@ body.auth-locked .auth-screen {
   gap: 8px;
   justify-content: flex-end;
   align-items: center;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--mint);
+  font-weight: 800;
+}
+
+.check-row input {
+  width: 20px;
+  height: 20px;
 }
 
 .mini-button {
@@ -874,7 +892,7 @@ select option {
     top: 0;
     z-index: 10;
     overflow-x: auto;
-    grid-template-columns: repeat(6, minmax(104px, 1fr));
+    grid-template-columns: repeat(7, minmax(104px, 1fr));
     padding: 8px 0;
     background: rgba(5, 31, 32, 0.94);
   }

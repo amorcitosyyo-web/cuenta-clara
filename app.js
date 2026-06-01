@@ -118,6 +118,15 @@ const els = {
   historyDateFrom: document.querySelector("#historyDateFrom"),
   historyDateTo: document.querySelector("#historyDateTo"),
   historyList: document.querySelector("#historyList"),
+  scheduledForm: document.querySelector("#scheduledForm"),
+  scheduledNameInput: document.querySelector("#scheduledNameInput"),
+  scheduledAmountInput: document.querySelector("#scheduledAmountInput"),
+  scheduledDateInput: document.querySelector("#scheduledDateInput"),
+  scheduledCategoryInput: document.querySelector("#scheduledCategoryInput"),
+  scheduledNoteInput: document.querySelector("#scheduledNoteInput"),
+  scheduledMonthlyInput: document.querySelector("#scheduledMonthlyInput"),
+  scheduledList: document.querySelector("#scheduledList"),
+  enableNotificationsBtn: document.querySelector("#enableNotificationsBtn"),
   confirmModal: document.querySelector("#confirmModal"),
   confirmTitle: document.querySelector("#confirmTitle"),
   confirmMessage: document.querySelector("#confirmMessage"),
@@ -197,6 +206,9 @@ function bindEvents() {
   els.historyDateTo.addEventListener("change", renderHistory);
   els.historyList.addEventListener("click", handleMovementAction);
   els.recentMovements.addEventListener("click", handleMovementAction);
+  els.scheduledForm.addEventListener("submit", saveScheduledPayment);
+  els.scheduledList.addEventListener("click", handleScheduledAction);
+  els.enableNotificationsBtn.addEventListener("click", requestNotifications);
   els.confirmCancelBtn.addEventListener("click", () => resolveDeleteConfirm(false));
   els.confirmOkBtn.addEventListener("click", () => resolveDeleteConfirm(true));
   els.receiptImageInput.addEventListener("change", previewReceiptImage);
@@ -367,6 +379,10 @@ function populateSelects() {
     .filter((category) => category.kind === "expense")
     .map((category) => `<option value="${category.id}">${category.name}</option>`)
     .join("");
+  els.scheduledCategoryInput.innerHTML = categories
+    .filter((category) => category.kind === "expense")
+    .map((category) => `<option value="${category.id}">${category.name}</option>`)
+    .join("");
   els.receiptCategory.innerHTML = categories
     .filter((category) => category.kind === "expense")
     .map((category) => `<option value="${category.id}">${category.name}</option>`)
@@ -410,6 +426,7 @@ function setToday() {
   const today = toInputDate(new Date());
   els.dateInput.value = today;
   els.savingDateInput.value = today;
+  els.scheduledDateInput.value = today;
 }
 
 function switchView(view) {
@@ -495,6 +512,7 @@ function normalizeData(data) {
     customCategories: Array.isArray(data.customCategories) ? data.customCategories : [],
     deletedDefaultCategories: Array.isArray(data.deletedDefaultCategories) ? data.deletedDefaultCategories : [],
     merchantRules: Array.isArray(data.merchantRules) ? data.merchantRules : [],
+    scheduledPayments: Array.isArray(data.scheduledPayments) ? data.scheduledPayments : [],
     savingsAccounts: Array.isArray(data.savingsAccounts) ? data.savingsAccounts : [],
   };
 
@@ -881,6 +899,77 @@ function handleSavingGoalAction(event) {
   if (button.dataset.action === "withdraw-saving") startSavingWithdrawal(button.dataset.id);
   if (button.dataset.action === "edit-saving-goal") startSavingGoalEdit(button.dataset.id);
   if (button.dataset.action === "delete-saving-goal") deleteSavingGoal(button.dataset.id);
+}
+
+function saveScheduledPayment(event) {
+  event.preventDefault();
+  const amount = Number(els.scheduledAmountInput.value || 0);
+  const name = els.scheduledNameInput.value.trim();
+  if (!name || !amount) return;
+  state.data.scheduledPayments.push({
+    id: createId(),
+    name,
+    amount,
+    dueDate: els.scheduledDateInput.value,
+    category: els.scheduledCategoryInput.value,
+    note: els.scheduledNoteInput.value.trim(),
+    repeat: els.scheduledMonthlyInput.checked ? "monthly" : "once",
+    active: true,
+    notifiedOn: "",
+    createdAt: new Date().toISOString(),
+  });
+  saveData();
+  els.scheduledForm.reset();
+  setToday();
+  render();
+}
+
+async function markScheduledPaid(id) {
+  const payment = state.data.scheduledPayments.find((item) => item.id === id);
+  if (!payment) return;
+  state.data.movements.unshift(makeMovement(
+    "expense",
+    payment.amount,
+    toInputDate(new Date()),
+    payment.category,
+    payment.name,
+    payment.note || "Pago programado",
+  ));
+  if (payment.repeat === "monthly") {
+    payment.dueDate = addMonths(payment.dueDate, 1);
+    payment.notifiedOn = "";
+  } else {
+    payment.active = false;
+  }
+  saveData();
+  render();
+}
+
+async function deleteScheduledPayment(id) {
+  const payment = state.data.scheduledPayments.find((item) => item.id === id);
+  if (!payment) return;
+  const confirmed = await confirmDeleteApp(`Eliminar el pago programado "${payment.name}"?`, "Eliminar pago");
+  if (!confirmed) return;
+  state.data.scheduledPayments = state.data.scheduledPayments.filter((item) => item.id !== id);
+  saveData();
+  render();
+}
+
+function handleScheduledAction(event) {
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+  if (button.dataset.action === "pay-scheduled") markScheduledPaid(button.dataset.id);
+  if (button.dataset.action === "delete-scheduled") deleteScheduledPayment(button.dataset.id);
+}
+
+async function requestNotifications() {
+  if (!("Notification" in window)) {
+    alert("Este navegador no soporta notificaciones.");
+    return;
+  }
+  const permission = await Notification.requestPermission();
+  els.enableNotificationsBtn.textContent = permission === "granted" ? "Notificaciones activas" : "Activar notificaciones";
+  checkScheduledNotifications();
 }
 
 function previewReceiptImage(event) {
@@ -1724,7 +1813,9 @@ function render() {
   renderBudgetList(monthMovements);
   renderSavings();
   renderHistory();
+  renderScheduledPayments();
   renderMerchantSuggestions();
+  checkScheduledNotifications();
 }
 
 function renderBudgetSummary(movements) {
@@ -1753,6 +1844,13 @@ function renderBudgetSummary(movements) {
 
 function renderAlerts(movements) {
   const alerts = [];
+  getDueScheduledPayments().forEach((payment) => {
+    alerts.push({
+      tone: isPastDue(payment.dueDate) ? "danger" : "warning",
+      title: `Pago pendiente: ${payment.name}`,
+      text: `${money(payment.amount)} vence ${displayDate(payment.dueDate)}${payment.repeat === "monthly" ? " · mensual" : ""}.`,
+    });
+  });
   const expenses = movements.filter((item) => item.type === "expense");
   const byCategory = groupExpensesByCategory(expenses);
   const budgets = getBudgetSnapshotForMonth(monthKey(state.activeMonth));
@@ -1801,6 +1899,48 @@ function renderAlerts(movements) {
         </article>
       `).join("")
     : `<div class="empty">Todavia no hay alertas que mostrar.</div>`;
+}
+
+function renderScheduledPayments() {
+  const active = (state.data.scheduledPayments || [])
+    .filter((payment) => payment.active !== false)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
+  els.scheduledList.innerHTML = active.length
+    ? active.map((payment) => `
+        <article class="saving-row ${isDueOrPast(payment.dueDate) ? "due-payment" : ""}">
+          <div>
+            <strong>${escapeHtml(payment.name)}</strong>
+            <p>${displayDate(payment.dueDate)} · ${money(payment.amount)} · ${categoryName(payment.category)}${payment.repeat === "monthly" ? " · mensual" : ""}${payment.note ? ` · ${escapeHtml(payment.note)}` : ""}</p>
+          </div>
+          <div class="saving-actions">
+            <button class="mini-button" data-action="pay-scheduled" data-id="${payment.id}">Pagado</button>
+            <button class="mini-button icon-button-small danger" data-action="delete-scheduled" data-id="${payment.id}" aria-label="Eliminar pago" title="Eliminar">🗑️</button>
+          </div>
+        </article>
+      `).join("")
+    : `<div class="empty">No hay pagos programados.</div>`;
+}
+
+function getDueScheduledPayments() {
+  return (state.data.scheduledPayments || [])
+    .filter((payment) => payment.active !== false)
+    .filter((payment) => isDueOrPast(payment.dueDate));
+}
+
+function checkScheduledNotifications() {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const today = toInputDate(new Date());
+  let changed = false;
+  getDueScheduledPayments().forEach((payment) => {
+    if (payment.notifiedOn === today) return;
+    new Notification("Cuenta Clara: pago pendiente", {
+      body: `${payment.name}: ${money(payment.amount)} vence ${displayDate(payment.dueDate)}.`,
+    });
+    payment.notifiedOn = today;
+    changed = true;
+  });
+  if (changed) saveData();
 }
 
 function renderCategoryBreakdown(movements) {
@@ -2039,6 +2179,22 @@ function getMonthMovements() {
 
 function getMovementsForMonthKey(key) {
   return state.data.movements.filter((item) => item.date.startsWith(key));
+}
+
+function isDueOrPast(date) {
+  return String(date || "") <= toInputDate(new Date());
+}
+
+function isPastDue(date) {
+  return String(date || "") < toInputDate(new Date());
+}
+
+function addMonths(dateValue, months) {
+  const date = new Date(`${dateValue}T12:00:00`);
+  const day = date.getDate();
+  date.setMonth(date.getMonth() + months);
+  if (date.getDate() !== day) date.setDate(0);
+  return toInputDate(date);
 }
 
 function calculateTotals(movements) {

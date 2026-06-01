@@ -93,6 +93,7 @@
           <button class="tab" data-view="receipt">Factura</button>
           <button class="tab" data-view="budgets">Presupuesto</button>
           <button class="tab" data-view="savings">Ahorros</button>
+          <button class="tab" data-view="scheduled">Programados</button>
           <button class="tab" data-view="history">Historial</button>
         </nav>
 
@@ -356,6 +357,43 @@
             <select id="historyCategoryFilter" aria-label="Filtrar por categoria"></select>
           </div>
           <div class="movement-list" id="historyList"></div>
+        </section>
+
+        <section class="view" id="scheduledView">
+          <form class="form-panel" id="scheduledForm">
+            <div class="section-heading compact">
+              <h2>Pagos programados</h2>
+              <button class="secondary-button" id="enableNotificationsBtn" type="button">Activar notificaciones</button>
+            </div>
+
+            <label class="field">
+              <span>Nombre</span>
+              <input id="scheduledNameInput" type="text" list="merchantSuggestions" placeholder="Ej. Alquiler, Claro, Spotify" required />
+            </label>
+            <label class="field">
+              <span>Monto</span>
+              <input id="scheduledAmountInput" type="number" min="0" step="0.01" placeholder="Ej. 260000" required />
+            </label>
+            <label class="field">
+              <span>Fecha de pago</span>
+              <input id="scheduledDateInput" type="date" required />
+            </label>
+            <label class="field">
+              <span>Categoria</span>
+              <select id="scheduledCategoryInput" required></select>
+            </label>
+            <label class="field">
+              <span>Nota</span>
+              <textarea id="scheduledNoteInput" rows="2" placeholder="Opcional"></textarea>
+            </label>
+            <label class="check-row">
+              <input id="scheduledMonthlyInput" type="checkbox" />
+              <span>Repetir cada mes</span>
+            </label>
+            <button class="primary-button" type="submit">Guardar pago programado</button>
+          </form>
+
+          <div class="savings-list" id="scheduledList"></div>
         </section>
       </main>
       <datalist id="merchantSuggestions"></datalist>
