@@ -914,13 +914,13 @@ async function analyzeReceipt() {
     const parsed = await analyzeReceiptWithBackend(text, image);
     state.pendingReceipt = { ...parsed, image };
     renderReceiptResult(parsed);
-    els.receiptStatus.textContent = "Analizada con Gemini protegido. Revisa antes de guardar.";
+    els.receiptStatus.textContent = "IA Gemini usada. Revisa y corrige antes de guardar.";
   } catch (error) {
     console.error(error);
     const parsed = image ? await analyzeReceiptWithFreeOcr(text, image).catch(() => parseReceiptText(text)) : parseReceiptText(text);
     state.pendingReceipt = { ...parsed, image };
     renderReceiptResult(parsed);
-    els.receiptStatus.textContent = "Analizada con respaldo local. Revisa antes de guardar.";
+    els.receiptStatus.textContent = "No uso IA: use respaldo local. Revisa bien antes de guardar.";
   } finally {
     els.analyzeReceiptBtn.disabled = false;
   }
@@ -1310,9 +1310,9 @@ function parseReceiptText(text) {
 }
 
 function normalizeReceiptItem(item) {
-  if (typeof item === "string") return { name: item.trim(), amount: null };
+  if (typeof item === "string") return parseReceiptItemLine(item) || { name: "", amount: null };
   return {
-    name: String(item?.nombre || item?.name || "").trim(),
+    name: cleanReceiptProductName(String(item?.nombre || item?.name || "")),
     amount: Number(item?.precio || item?.amount || item?.monto || 0) || null,
   };
 }
@@ -1320,9 +1320,13 @@ function normalizeReceiptItem(item) {
 function formatReceiptItems(items = []) {
   return items.map((item) => {
     const normalized = normalizeReceiptItem(item);
-    if (!normalized.name) return "";
-    return normalized.amount ? `${normalized.name} - ${money(normalized.amount)}` : normalized.name;
+    if (!normalized.name || !normalized.amount) return "";
+    return `${normalized.name} - ${formatReceiptProductAmount(normalized.amount)}`;
   }).filter(Boolean).join("\n");
+}
+
+function formatReceiptProductAmount(amount) {
+  return `₡${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Number(amount || 0))}`;
 }
 
 function parseReceiptItemsInput(value) {
@@ -1337,6 +1341,33 @@ function parseReceiptItemsInput(value) {
       const name = line.slice(0, amountMatch.index).replace(/[-–—:]+$/g, "").trim() || line;
       return { name, amount };
     });
+}
+
+function parseReceiptItemLine(line) {
+  const original = String(line || "").trim();
+  if (!original || isReceiptNoiseLine(original)) return null;
+  const amountMatch = original.match(/(?:₡|\bcrc\b)?\s*(\d{1,3}(?:[.,]\d{3})+|\d{3,7})(?:[.,](\d{2}))?\s*[gs]?$/i);
+  if (!amountMatch) return null;
+  const amount = parseMoneyValue(amountMatch[0]);
+  if (!amount || amount < 50) return null;
+  const name = cleanReceiptProductName(original.slice(0, amountMatch.index));
+  if (!name || isReceiptNoiseLine(name)) return null;
+  return { name, amount };
+}
+
+function cleanReceiptProductName(value) {
+  return String(value || "")
+    .replace(/\b\d{7,}\b/g, "")
+    .replace(/\b\d+\s*x\b/gi, "")
+    .replace(/\b[gs]\s*\d{1,2}\b/gi, "")
+    .replace(/^\s*\d+(?:[.,]\d+)?\s+/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/[-–—:]+$/g, "")
+    .trim();
+}
+
+function isReceiptNoiseLine(value) {
+  return /\b(subtotal|sub total|total|tarjeta|tarjetas|monto|cancelado|fecha|hora|cambio|vuelto|iva|impuesto|resumen|clave|aut|autorizacion|terminal|tiquete|comprobante|tc#|cta|servicio|cliente|participa|escanea|voucher|resolucion|gracias|correo|email|telefono|tel\.?|cedula|c[eé]dula|juridica|jur[ií]dica|consecutivo|qr|barcode|codigo|moneda|cajero|caja|condicion|medio de pago)\b/i.test(String(value || ""));
 }
 
 function buildReceiptNote(items, note) {
@@ -1595,26 +1626,11 @@ function pickCategoryColor(index) {
 }
 
 function detectItems(text) {
-  const stopWords = /\b(mxm|subtotal|sub total|total|tarjeta|tarjetas|monto|cancelado|fecha|hora|cambio|vuelto|iva|impuesto|resumen|clave|aut|tiquete|comprobante|tc#|cta|servicio|cliente|participa|escanea|voucher|resolucion|gracias|correo|email|telefono|tel\.?|cedula|c[eé]dula|juridica|jur[ií]dica|inversiones|corporacion|supermercados unidos|farmavalue|kiss makeup|supermercado avenida|fm tibas)\b/i;
   return normalizeReceiptText(text)
     .split("\n")
-    .map((line) => cleanItemLine(line))
-    .filter((line) => line.length > 2)
-    .filter((line) => !stopWords.test(line))
-    .filter((line) => !/\d{1,2}[-/]\d{1,2}[-/]\d{2,4}/.test(line))
-    .filter((line) => !/\d{1,2}:\d{2}/.test(line))
-    .filter((line) => !/^\d+$/.test(line))
+    .map((line) => parseReceiptItemLine(line))
+    .filter(Boolean)
     .slice(0, 12);
-}
-
-function cleanItemLine(line) {
-  return String(line || "")
-    .replace(/\b\d{7,}\b/g, "")
-    .replace(/(?:₡|\bcrc\b)?\s*(?:\d{1,3}(?:[.,]\d{3})+|\d{4,7})(?:[.,]\d{2})?\s*[gs]?/gi, "")
-    .replace(/\b\d+\s*x\b/gi, "")
-    .replace(/\b[gs]\s*\d{1,2}\b/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
 }
 
 function renderReceiptResult(parsed) {
@@ -1631,13 +1647,14 @@ function renderReceiptResult(parsed) {
 function savePendingReceipt() {
   if (!state.pendingReceipt) return;
   const items = parseReceiptItemsInput(els.receiptItems.value);
+  const cleanItems = items.filter((item) => item.name && item.amount);
   const receipt = {
     ...state.pendingReceipt,
     date: els.receiptDate.value || toInputDate(new Date()),
     merchant: els.receiptMerchant.value.trim() || "Factura",
     amount: Number(els.receiptTotal.value || 0),
     category: normalizeCategory(els.receiptCategory.value),
-    items,
+    items: cleanItems,
     note: els.receiptNote.value.trim(),
   };
   if (!receipt.amount) {
