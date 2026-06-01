@@ -113,6 +113,7 @@ const els = {
   savingsList: document.querySelector("#savingsList"),
   historyTypeFilter: document.querySelector("#historyTypeFilter"),
   historyCategoryFilter: document.querySelector("#historyCategoryFilter"),
+  historySearchInput: document.querySelector("#historySearchInput"),
   historyDateFrom: document.querySelector("#historyDateFrom"),
   historyDateTo: document.querySelector("#historyDateTo"),
   historyList: document.querySelector("#historyList"),
@@ -190,6 +191,7 @@ function bindEvents() {
   els.cancelReceiptBtn.addEventListener("click", resetReceiptFlow);
   els.historyTypeFilter.addEventListener("change", renderHistory);
   els.historyCategoryFilter.addEventListener("change", renderHistory);
+  els.historySearchInput.addEventListener("input", renderHistory);
   els.historyDateFrom.addEventListener("change", renderHistory);
   els.historyDateTo.addEventListener("change", renderHistory);
   els.historyList.addEventListener("click", handleMovementAction);
@@ -1920,6 +1922,7 @@ function renderSavingRow(account, interactive = false) {
 function renderHistory() {
   const type = els.historyTypeFilter.value;
   const category = els.historyCategoryFilter.value;
+  const search = els.historySearchInput.value.trim();
   const dateFrom = els.historyDateFrom.value;
   const dateTo = els.historyDateTo.value;
   const rows = state.data.movements
@@ -1927,11 +1930,45 @@ function renderHistory() {
     .filter((item) => !dateTo || item.date <= dateTo)
     .filter((item) => type === "all" || item.type === type)
     .filter((item) => category === "all" || item.category === category)
+    .filter((item) => matchesHistorySearch(item, search))
     .sort((a, b) => b.date.localeCompare(a.date));
 
   els.historyList.innerHTML = rows.length
     ? rows.map(renderMovementRow).join("")
     : `<div class="empty">No hay movimientos con esos filtros.</div>`;
+}
+
+function matchesHistorySearch(item, search) {
+  if (!search) return true;
+  const normalizedSearch = normalizeSearchText(search);
+  const amountQuery = parseMoneyValue(search);
+  const receiptItems = Array.isArray(item.receipt?.items)
+    ? item.receipt.items.map((entry) => typeof entry === "string" ? entry : `${entry.name || entry.nombre || ""} ${entry.amount || entry.precio || ""}`).join(" ")
+    : "";
+  const haystack = normalizeSearchText([
+    item.merchant,
+    item.note,
+    item.date,
+    item.type,
+    categoryName(item.category),
+    money(item.amount),
+    String(Math.abs(Number(item.amount || 0))),
+    receiptItems,
+  ].join(" "));
+
+  if (haystack.includes(normalizedSearch)) return true;
+  if (amountQuery > 0 && Math.round(Math.abs(Number(item.amount || 0))) === Math.round(amountQuery)) return true;
+  return normalizedSearch.split(/\s+/).filter(Boolean).every((word) => haystack.includes(word));
+}
+
+function normalizeSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[₡,._-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function renderMovementRow(item) {
