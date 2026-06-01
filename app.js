@@ -1327,7 +1327,7 @@ function formatReceiptItems(items = []) {
 }
 
 function formatReceiptProductAmount(amount) {
-  return `₡${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Number(amount || 0))}`;
+  return `₡${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(Number(amount || 0))}`;
 }
 
 function parseReceiptItemsInput(value) {
@@ -1431,7 +1431,7 @@ function extractReceiptTotal(text) {
   }
 
   candidates.sort((a, b) => b.score - a.score || b.amount - a.amount);
-  return candidates[0] ? Math.round(candidates[0].amount) : 0;
+  return candidates[0] ? candidates[0].amount : 0;
 }
 
 function extractAmountsFromLine(line) {
@@ -1638,7 +1638,7 @@ function renderReceiptResult(parsed) {
   populateSelects();
   els.receiptDate.value = parsed.date || toInputDate(new Date());
   els.receiptMerchant.value = parsed.merchant || "";
-  els.receiptTotal.value = Math.round(Number(parsed.amount || 0));
+  els.receiptTotal.value = Number(parsed.amount || 0);
   els.receiptCategory.value = normalizeCategory(parsed.category);
   els.receiptItems.value = formatReceiptItems(parsed.items || []);
   els.receiptNote.value = parsed.note || "";
@@ -1994,7 +1994,7 @@ function matchesHistorySearch(item, search) {
   ].join(" "));
 
   if (haystack.includes(normalizedSearch)) return true;
-  if (amountQuery > 0 && Math.round(Math.abs(Number(item.amount || 0))) === Math.round(amountQuery)) return true;
+  if (amountQuery > 0 && Math.abs(Math.abs(Number(item.amount || 0)) - amountQuery) < 0.01) return true;
   return normalizedSearch.split(/\s+/).filter(Boolean).every((word) => haystack.includes(word));
 }
 
@@ -2107,7 +2107,7 @@ function money(amount) {
   return new Intl.NumberFormat("es-CR", {
     style: "currency",
     currency: "CRC",
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(Number(amount || 0));
 }
 
