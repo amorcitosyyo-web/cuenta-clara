@@ -70,6 +70,7 @@ const els = {
   dateInput: document.querySelector("#dateInput"),
   categoryInput: document.querySelector("#categoryInput"),
   merchantInput: document.querySelector("#merchantInput"),
+  merchantSuggestions: document.querySelector("#merchantSuggestions"),
   noteInput: document.querySelector("#noteInput"),
   movementSubmitBtn: document.querySelector("#movementSubmitBtn"),
   cancelMovementEditBtn: document.querySelector("#cancelMovementEditBtn"),
@@ -1723,6 +1724,7 @@ function render() {
   renderBudgetList(monthMovements);
   renderSavings();
   renderHistory();
+  renderMerchantSuggestions();
 }
 
 function renderBudgetSummary(movements) {
@@ -1953,6 +1955,24 @@ function renderHistory() {
   els.historyList.innerHTML = rows.length
     ? rows.map(renderMovementRow).join("")
     : `<div class="empty">No hay movimientos con esos filtros.</div>`;
+}
+
+function renderMerchantSuggestions() {
+  const names = new Map();
+  state.data.movements.forEach((movement) => {
+    const name = normalizeMerchantName(movement.merchant);
+    if (name.length > 1) names.set(name.toLowerCase(), name);
+  });
+  (state.data.merchantRules || []).forEach((rule) => {
+    const name = normalizeMerchantName(rule.displayName || rule.key);
+    if (name.length > 1) names.set(name.toLowerCase(), name);
+  });
+
+  els.merchantSuggestions.innerHTML = [...names.values()]
+    .sort((a, b) => a.localeCompare(b, "es"))
+    .slice(0, 80)
+    .map((name) => `<option value="${escapeHtml(name)}"></option>`)
+    .join("");
 }
 
 function matchesHistorySearch(item, search) {

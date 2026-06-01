@@ -170,7 +170,7 @@
 
             <label class="field">
               <span>Comercio o fuente</span>
-              <input id="merchantInput" type="text" placeholder="Ej. Walmart, salario, alquiler" />
+              <input id="merchantInput" type="text" list="merchantSuggestions" placeholder="Ej. Walmart, salario, alquiler" />
             </label>
 
             <label class="field">
@@ -213,7 +213,7 @@
                 </label>
                 <label class="field">
                   <span>Comercio</span>
-                  <input id="receiptMerchant" type="text" />
+                  <input id="receiptMerchant" type="text" list="merchantSuggestions" />
                 </label>
                 <label class="field">
                   <span>Total</span>
@@ -358,6 +358,7 @@
           <div class="movement-list" id="historyList"></div>
         </section>
       </main>
+      <datalist id="merchantSuggestions"></datalist>
     </div>
 
     <div class="confirm-modal" id="confirmModal" hidden>
