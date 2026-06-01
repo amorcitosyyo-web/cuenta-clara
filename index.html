@@ -93,7 +93,7 @@
           <button class="tab" data-view="receipt">Factura</button>
           <button class="tab" data-view="budgets">Presupuesto</button>
           <button class="tab" data-view="savings">Ahorros</button>
-          <button class="tab" data-view="scheduled">Programados</button>
+          <button class="tab" data-view="scheduled">Gastos programados</button>
           <button class="tab" data-view="history">Historial</button>
         </nav>
 
@@ -171,7 +171,8 @@
 
             <label class="field">
               <span>Comercio o fuente</span>
-              <input id="merchantInput" type="text" list="merchantSuggestions" placeholder="Ej. Walmart, salario, alquiler" />
+              <input id="merchantInput" type="text" placeholder="Ej. Walmart, salario, alquiler" autocomplete="off" />
+              <div class="inline-suggestions" id="merchantSuggestionPanel" hidden></div>
             </label>
 
             <label class="field">
@@ -214,7 +215,8 @@
                 </label>
                 <label class="field">
                   <span>Comercio</span>
-                  <input id="receiptMerchant" type="text" list="merchantSuggestions" />
+                  <input id="receiptMerchant" type="text" autocomplete="off" />
+                  <div class="inline-suggestions" id="receiptMerchantSuggestionPanel" hidden></div>
                 </label>
                 <label class="field">
                   <span>Total</span>
@@ -362,13 +364,14 @@
         <section class="view" id="scheduledView">
           <form class="form-panel" id="scheduledForm">
             <div class="section-heading compact">
-              <h2>Pagos programados</h2>
+              <h2>Gastos programados</h2>
               <button class="secondary-button" id="enableNotificationsBtn" type="button">Activar notificaciones</button>
             </div>
 
             <label class="field">
               <span>Nombre</span>
-              <input id="scheduledNameInput" type="text" list="merchantSuggestions" placeholder="Ej. Alquiler, Claro, Spotify" required />
+              <input id="scheduledNameInput" type="text" placeholder="Ej. Alquiler, Claro, Spotify" autocomplete="off" required />
+              <div class="inline-suggestions" id="scheduledNameSuggestionPanel" hidden></div>
             </label>
             <label class="field">
               <span>Monto</span>
@@ -390,13 +393,12 @@
               <input id="scheduledMonthlyInput" type="checkbox" />
               <span>Repetir cada mes</span>
             </label>
-            <button class="primary-button" type="submit">Guardar pago programado</button>
+            <button class="primary-button" type="submit">Guardar gasto programado</button>
           </form>
 
           <div class="savings-list" id="scheduledList"></div>
         </section>
       </main>
-      <datalist id="merchantSuggestions"></datalist>
     </div>
 
     <div class="confirm-modal" id="confirmModal" hidden>

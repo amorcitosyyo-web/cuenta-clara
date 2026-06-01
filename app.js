@@ -34,7 +34,7 @@ const remote = {
 };
 
 const state = {
-  activeMonth: new Date(2026, 4, 1),
+  activeMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   editingMovementId: null,
   editingSavingMovementId: null,
   editingSavingGoalId: null,
@@ -70,7 +70,7 @@ const els = {
   dateInput: document.querySelector("#dateInput"),
   categoryInput: document.querySelector("#categoryInput"),
   merchantInput: document.querySelector("#merchantInput"),
-  merchantSuggestions: document.querySelector("#merchantSuggestions"),
+  merchantSuggestionPanel: document.querySelector("#merchantSuggestionPanel"),
   noteInput: document.querySelector("#noteInput"),
   movementSubmitBtn: document.querySelector("#movementSubmitBtn"),
   cancelMovementEditBtn: document.querySelector("#cancelMovementEditBtn"),
@@ -82,6 +82,7 @@ const els = {
   receiptResult: document.querySelector("#receiptResult"),
   receiptDate: document.querySelector("#receiptDate"),
   receiptMerchant: document.querySelector("#receiptMerchant"),
+  receiptMerchantSuggestionPanel: document.querySelector("#receiptMerchantSuggestionPanel"),
   receiptTotal: document.querySelector("#receiptTotal"),
   receiptCategory: document.querySelector("#receiptCategory"),
   receiptItems: document.querySelector("#receiptItems"),
@@ -120,6 +121,7 @@ const els = {
   historyList: document.querySelector("#historyList"),
   scheduledForm: document.querySelector("#scheduledForm"),
   scheduledNameInput: document.querySelector("#scheduledNameInput"),
+  scheduledNameSuggestionPanel: document.querySelector("#scheduledNameSuggestionPanel"),
   scheduledAmountInput: document.querySelector("#scheduledAmountInput"),
   scheduledDateInput: document.querySelector("#scheduledDateInput"),
   scheduledCategoryInput: document.querySelector("#scheduledCategoryInput"),
@@ -206,6 +208,9 @@ function bindEvents() {
   els.historyDateTo.addEventListener("change", renderHistory);
   els.historyList.addEventListener("click", handleMovementAction);
   els.recentMovements.addEventListener("click", handleMovementAction);
+  bindMerchantSuggestionInput(els.merchantInput, els.merchantSuggestionPanel);
+  bindMerchantSuggestionInput(els.receiptMerchant, els.receiptMerchantSuggestionPanel);
+  bindMerchantSuggestionInput(els.scheduledNameInput, els.scheduledNameSuggestionPanel);
   els.scheduledForm.addEventListener("submit", saveScheduledPayment);
   els.scheduledList.addEventListener("click", handleScheduledAction);
   els.enableNotificationsBtn.addEventListener("click", requestNotifications);
@@ -216,6 +221,10 @@ function bindEvents() {
   els.signOutBtn.addEventListener("click", signOut);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !els.confirmModal.hidden) resolveDeleteConfirm(false);
+    if (event.key === "Escape") hideMerchantSuggestions();
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".field")) hideMerchantSuggestions();
   });
 }
 
@@ -2098,6 +2107,10 @@ function renderHistory() {
 }
 
 function renderMerchantSuggestions() {
+  // Suggestions are rendered on focus/input by bindMerchantSuggestionInput.
+}
+
+function getMerchantSuggestionNames() {
   const names = new Map();
   state.data.movements.forEach((movement) => {
     const name = normalizeMerchantName(movement.merchant);
@@ -2108,11 +2121,41 @@ function renderMerchantSuggestions() {
     if (name.length > 1) names.set(name.toLowerCase(), name);
   });
 
-  els.merchantSuggestions.innerHTML = [...names.values()]
+  return [...names.values()]
     .sort((a, b) => a.localeCompare(b, "es"))
-    .slice(0, 80)
-    .map((name) => `<option value="${escapeHtml(name)}"></option>`)
-    .join("");
+    .slice(0, 80);
+}
+
+function bindMerchantSuggestionInput(input, panel) {
+  const render = () => renderInlineMerchantSuggestions(input, panel);
+  input.addEventListener("input", render);
+  input.addEventListener("focus", render);
+  panel.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-suggestion]");
+    if (!button) return;
+    input.value = button.dataset.suggestion;
+    panel.hidden = true;
+    input.focus();
+  });
+}
+
+function renderInlineMerchantSuggestions(input, panel) {
+  const query = normalizeSearchText(input.value);
+  const suggestions = getMerchantSuggestionNames()
+    .filter((name) => !query || normalizeSearchText(name).includes(query))
+    .slice(0, 6);
+
+  panel.innerHTML = suggestions.map((name) => `
+    <button type="button" data-suggestion="${escapeHtml(name)}">${escapeHtml(name)}</button>
+  `).join("");
+  panel.hidden = suggestions.length === 0;
+}
+
+function hideMerchantSuggestions() {
+  [els.merchantSuggestionPanel, els.receiptMerchantSuggestionPanel, els.scheduledNameSuggestionPanel]
+    .forEach((panel) => {
+      if (panel) panel.hidden = true;
+    });
 }
 
 function matchesHistorySearch(item, search) {
