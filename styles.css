@@ -436,6 +436,11 @@ body.auth-locked .auth-screen {
   background: rgba(255, 111, 118, 0.08);
 }
 
+.paid-payment {
+  border-color: rgba(216, 255, 85, 0.45);
+  background: rgba(216, 255, 85, 0.08);
+}
+
 .category-row header,
 .movement-row,
 .budget-row header,
@@ -503,6 +508,11 @@ body.auth-locked .auth-screen {
 .primary-button.danger {
   background: rgba(255, 111, 118, 0.16);
   color: var(--rose);
+}
+
+.mini-button.paid-toggle {
+  background: rgba(216, 255, 85, 0.16);
+  color: var(--lime);
 }
 
 .mini-button:disabled {

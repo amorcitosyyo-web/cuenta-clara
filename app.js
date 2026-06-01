@@ -530,6 +530,12 @@ function normalizeData(data) {
     ...movement,
   }));
 
+  normalized.scheduledPayments = normalized.scheduledPayments.map((payment) => ({
+    paidMonths: [],
+    ...payment,
+    paidMonths: Array.isArray(payment.paidMonths) ? payment.paidMonths : [],
+  }));
+
   return normalized;
 }
 
@@ -936,19 +942,28 @@ function saveScheduledPayment(event) {
 async function markScheduledPaid(id) {
   const payment = state.data.scheduledPayments.find((item) => item.id === id);
   if (!payment) return;
-  state.data.movements.unshift(makeMovement(
-    "expense",
-    payment.amount,
-    toInputDate(new Date()),
-    payment.category,
-    payment.name,
-    payment.note || "Pago programado",
-  ));
-  if (payment.repeat === "monthly") {
-    payment.dueDate = addMonths(payment.dueDate, 1);
-    payment.notifiedOn = "";
+  const paidMonth = monthKey(state.activeMonth);
+  payment.paidMonths = Array.isArray(payment.paidMonths) ? payment.paidMonths : [];
+
+  if (isScheduledPaidForMonth(payment, paidMonth)) {
+    payment.paidMonths = payment.paidMonths.filter((item) => item !== paidMonth);
+    state.data.movements = state.data.movements.filter((movement) => (
+      movement.scheduledPaymentId !== payment.id || movement.scheduledMonth !== paidMonth
+    ));
   } else {
-    payment.active = false;
+    const movement = makeMovement(
+      "expense",
+      payment.amount,
+      scheduledDateForMonth(payment, paidMonth),
+      payment.category,
+      payment.name,
+      payment.note || "Pago programado",
+    );
+    movement.scheduledPaymentId = payment.id;
+    movement.scheduledMonth = paidMonth;
+    state.data.movements.unshift(movement);
+    payment.paidMonths.push(paidMonth);
+    if (paidMonth === monthKey(new Date())) payment.notifiedOn = toInputDate(new Date());
   }
   saveData();
   render();
@@ -1854,10 +1869,11 @@ function renderBudgetSummary(movements) {
 function renderAlerts(movements) {
   const alerts = [];
   getDueScheduledPayments().forEach((payment) => {
+    const dueDate = scheduledDateForMonth(payment, monthKey(new Date()));
     alerts.push({
-      tone: isPastDue(payment.dueDate) ? "danger" : "warning",
+      tone: isPastDue(dueDate) ? "danger" : "warning",
       title: `Pago pendiente: ${payment.name}`,
-      text: `${money(payment.amount)} vence ${displayDate(payment.dueDate)}${payment.repeat === "monthly" ? " · mensual" : ""}.`,
+      text: `${money(payment.amount)} vence ${displayDate(dueDate)}${payment.repeat === "monthly" ? " · mensual" : ""}.`,
     });
   });
   const expenses = movements.filter((item) => item.type === "expense");
@@ -1911,30 +1927,52 @@ function renderAlerts(movements) {
 }
 
 function renderScheduledPayments() {
+  const activeMonthKey = monthKey(state.activeMonth);
   const active = (state.data.scheduledPayments || [])
     .filter((payment) => payment.active !== false)
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
   els.scheduledList.innerHTML = active.length
-    ? active.map((payment) => `
-        <article class="saving-row ${isDueOrPast(payment.dueDate) ? "due-payment" : ""}">
+    ? active.map((payment) => {
+      const paid = isScheduledPaidForMonth(payment, activeMonthKey);
+      const occurrenceDate = scheduledDateForMonth(payment, activeMonthKey);
+      return `
+        <article class="saving-row ${paid ? "paid-payment" : ""} ${!paid && isDueOrPast(occurrenceDate) ? "due-payment" : ""}">
           <div>
             <strong>${escapeHtml(payment.name)}</strong>
-            <p>${displayDate(payment.dueDate)} · ${money(payment.amount)} · ${categoryName(payment.category)}${payment.repeat === "monthly" ? " · mensual" : ""}${payment.note ? ` · ${escapeHtml(payment.note)}` : ""}</p>
+            <p>${displayDate(occurrenceDate)} · ${money(payment.amount)} · ${categoryName(payment.category)}${payment.repeat === "monthly" ? " · mensual" : ""}${paid ? " · pagado este mes" : ""}${payment.note ? ` · ${escapeHtml(payment.note)}` : ""}</p>
           </div>
           <div class="saving-actions">
-            <button class="mini-button" data-action="pay-scheduled" data-id="${payment.id}">Pagado</button>
+            <button class="mini-button ${paid ? "paid-toggle" : ""}" data-action="pay-scheduled" data-id="${payment.id}">${paid ? "Quitar pago" : "Marcar pagado"}</button>
             <button class="mini-button icon-button-small danger" data-action="delete-scheduled" data-id="${payment.id}" aria-label="Eliminar pago" title="Eliminar">🗑️</button>
           </div>
         </article>
-      `).join("")
+      `;
+    }).join("")
     : `<div class="empty">No hay pagos programados.</div>`;
 }
 
 function getDueScheduledPayments() {
+  const currentMonth = monthKey(new Date());
   return (state.data.scheduledPayments || [])
     .filter((payment) => payment.active !== false)
-    .filter((payment) => isDueOrPast(payment.dueDate));
+    .filter((payment) => !isScheduledPaidForMonth(payment, currentMonth))
+    .filter((payment) => isDueOrPast(scheduledDateForMonth(payment, currentMonth)));
+}
+
+function isScheduledPaidForMonth(payment, key = monthKey(state.activeMonth)) {
+  return (Array.isArray(payment.paidMonths) && payment.paidMonths.includes(key))
+    || state.data.movements.some((movement) => (
+      movement.scheduledPaymentId === payment.id && movement.scheduledMonth === key
+    ));
+}
+
+function scheduledDateForMonth(payment, key = monthKey(state.activeMonth)) {
+  const [year, month] = key.split("-").map(Number);
+  const due = new Date(`${payment.dueDate}T12:00:00`);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const day = Math.min(due.getDate(), daysInMonth);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 function checkScheduledNotifications() {
