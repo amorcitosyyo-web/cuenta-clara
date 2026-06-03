@@ -744,6 +744,23 @@ select option {
   box-shadow: var(--shadow);
 }
 
+.alert-dialog {
+  width: min(100%, 460px);
+}
+
+.floating-alert-list {
+  display: grid;
+  gap: 10px;
+}
+
+.single-action {
+  grid-template-columns: 1fr;
+}
+
+.single-action .primary-button {
+  width: 100%;
+}
+
 .receipt-upload {
   display: grid;
   grid-template-columns: 1fr;

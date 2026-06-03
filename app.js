@@ -134,6 +134,9 @@ const els = {
   confirmMessage: document.querySelector("#confirmMessage"),
   confirmCancelBtn: document.querySelector("#confirmCancelBtn"),
   confirmOkBtn: document.querySelector("#confirmOkBtn"),
+  floatingAlertModal: document.querySelector("#floatingAlertModal"),
+  floatingAlertList: document.querySelector("#floatingAlertList"),
+  floatingAlertOkBtn: document.querySelector("#floatingAlertOkBtn"),
   authScreen: document.querySelector("#authScreen"),
   authForm: document.querySelector("#authForm"),
   authEmailInput: document.querySelector("#authEmailInput"),
@@ -143,6 +146,7 @@ const els = {
 };
 
 let confirmDeleteResolver = null;
+let lastFloatingAlertKey = "";
 
 init();
 
@@ -216,11 +220,13 @@ function bindEvents() {
   els.enableNotificationsBtn.addEventListener("click", requestNotifications);
   els.confirmCancelBtn.addEventListener("click", () => resolveDeleteConfirm(false));
   els.confirmOkBtn.addEventListener("click", () => resolveDeleteConfirm(true));
+  els.floatingAlertOkBtn.addEventListener("click", dismissFloatingAlert);
   els.receiptImageInput.addEventListener("change", previewReceiptImage);
   els.authForm.addEventListener("submit", handleAuthSubmit);
   els.signOutBtn.addEventListener("click", signOut);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !els.confirmModal.hidden) resolveDeleteConfirm(false);
+    if (event.key === "Escape" && !els.floatingAlertModal.hidden) dismissFloatingAlert();
     if (event.key === "Escape") hideMerchantSuggestions();
   });
   document.addEventListener("click", (event) => {
@@ -1832,7 +1838,9 @@ function render() {
   renderBudgetSummary(monthMovements);
   renderCategoryBreakdown(monthMovements);
   renderMonthlyChart(totals);
-  renderAlerts(monthMovements);
+  const alerts = buildAlerts(monthMovements);
+  renderAlerts(alerts);
+  showFloatingAlerts(alerts);
   renderRecent(monthMovements);
   renderBudgetList(monthMovements);
   renderSavings();
@@ -1866,11 +1874,12 @@ function renderBudgetSummary(movements) {
   }
 }
 
-function renderAlerts(movements) {
+function buildAlerts(movements) {
   const alerts = [];
   getDueScheduledPayments().forEach((payment) => {
     const dueDate = scheduledDateForMonth(payment, monthKey(new Date()));
     alerts.push({
+      important: true,
       tone: isPastDue(dueDate) ? "danger" : "warning",
       title: `Pago pendiente: ${payment.name}`,
       text: `${money(payment.amount)} vence ${displayDate(dueDate)}${payment.repeat === "monthly" ? " · mensual" : ""}.`,
@@ -1893,9 +1902,9 @@ function renderAlerts(movements) {
     const spent = Number(byCategory[categoryId] || 0);
     const percent = Math.round((spent / limitValue) * 100);
     if (percent >= 100) {
-      alerts.push({ tone: "danger", title: `Superaste presupuesto en ${categoryName(categoryId).toLowerCase()}`, text: `Llevas ${money(spent)} de ${money(limitValue)}.` });
+      alerts.push({ important: true, tone: "danger", title: `Superaste presupuesto en ${categoryName(categoryId).toLowerCase()}`, text: `Llevas ${money(spent)} de ${money(limitValue)}.` });
     } else if (percent >= 80) {
-      alerts.push({ tone: "warning", title: `Ya gastaste ${percent}% en ${categoryName(categoryId).toLowerCase()}`, text: `Vas en ${money(spent)} de ${money(limitValue)}.` });
+      alerts.push({ important: true, tone: "warning", title: `Ya gastaste ${percent}% en ${categoryName(categoryId).toLowerCase()}`, text: `Vas en ${money(spent)} de ${money(limitValue)}.` });
     }
   });
 
@@ -1916,6 +1925,10 @@ function renderAlerts(movements) {
     });
   }
 
+  return alerts;
+}
+
+function renderAlerts(alerts) {
   els.alertsList.innerHTML = alerts.length
     ? alerts.map((alert) => `
         <article class="alert-card ${alert.tone}">
@@ -1924,6 +1937,31 @@ function renderAlerts(movements) {
         </article>
       `).join("")
     : `<div class="empty">Todavia no hay alertas que mostrar.</div>`;
+}
+
+function showFloatingAlerts(alerts) {
+  const importantAlerts = alerts.filter((alert) => alert.important);
+  if (!importantAlerts.length) return;
+
+  const alertKey = `${monthKey(state.activeMonth)}:${importantAlerts.map((alert) => `${alert.tone}|${alert.title}|${alert.text}`).join("::")}`;
+  if (alertKey === lastFloatingAlertKey || sessionStorage.getItem("cuenta-clara-dismissed-alert") === alertKey) return;
+
+  lastFloatingAlertKey = alertKey;
+  els.floatingAlertList.innerHTML = importantAlerts.map((alert) => `
+    <article class="alert-card ${alert.tone}">
+      <strong>${escapeHtml(alert.title)}</strong>
+      <p>${escapeHtml(alert.text)}</p>
+    </article>
+  `).join("");
+  els.floatingAlertModal.dataset.alertKey = alertKey;
+  els.floatingAlertModal.hidden = false;
+  els.floatingAlertOkBtn.focus();
+}
+
+function dismissFloatingAlert() {
+  const alertKey = els.floatingAlertModal.dataset.alertKey || "";
+  if (alertKey) sessionStorage.setItem("cuenta-clara-dismissed-alert", alertKey);
+  els.floatingAlertModal.hidden = true;
 }
 
 function renderScheduledPayments() {
