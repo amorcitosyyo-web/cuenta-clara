@@ -119,6 +119,7 @@ const els = {
   historyDateFrom: document.querySelector("#historyDateFrom"),
   historyDateTo: document.querySelector("#historyDateTo"),
   historyList: document.querySelector("#historyList"),
+  downloadMovementsBtn: document.querySelector("#downloadMovementsBtn"),
   scheduledForm: document.querySelector("#scheduledForm"),
   scheduledNameInput: document.querySelector("#scheduledNameInput"),
   scheduledNameSuggestionPanel: document.querySelector("#scheduledNameSuggestionPanel"),
@@ -211,6 +212,7 @@ function bindEvents() {
   els.historyDateFrom.addEventListener("change", renderHistory);
   els.historyDateTo.addEventListener("change", renderHistory);
   els.historyList.addEventListener("click", handleMovementAction);
+  els.downloadMovementsBtn.addEventListener("click", downloadMovementsCsv);
   els.recentMovements.addEventListener("click", handleMovementAction);
   bindMerchantSuggestionInput(els.merchantInput, els.merchantSuggestionPanel);
   bindMerchantSuggestionInput(els.receiptMerchant, els.receiptMerchantSuggestionPanel);
@@ -2164,22 +2166,70 @@ function renderSavingRow(account, interactive = false) {
 }
 
 function renderHistory() {
+  const rows = getFilteredHistoryRows();
+
+  els.historyList.innerHTML = rows.length
+    ? rows.map(renderMovementRow).join("")
+    : `<div class="empty">No hay movimientos con esos filtros.</div>`;
+}
+
+function getFilteredHistoryRows() {
   const type = els.historyTypeFilter.value;
   const category = els.historyCategoryFilter.value;
   const search = els.historySearchInput.value.trim();
   const dateFrom = els.historyDateFrom.value;
   const dateTo = els.historyDateTo.value;
-  const rows = state.data.movements
+  return state.data.movements
     .filter((item) => !dateFrom || item.date >= dateFrom)
     .filter((item) => !dateTo || item.date <= dateTo)
     .filter((item) => type === "all" || item.type === type)
     .filter((item) => category === "all" || item.category === category)
     .filter((item) => matchesHistorySearch(item, search))
     .sort((a, b) => b.date.localeCompare(a.date));
+}
 
-  els.historyList.innerHTML = rows.length
-    ? rows.map(renderMovementRow).join("")
-    : `<div class="empty">No hay movimientos con esos filtros.</div>`;
+function downloadMovementsCsv() {
+  const rows = getFilteredHistoryRows();
+  if (!rows.length) {
+    els.downloadMovementsBtn.textContent = "Sin datos";
+    setTimeout(() => {
+      els.downloadMovementsBtn.textContent = "Descargar CSV";
+    }, 1400);
+    return;
+  }
+
+  const headers = ["Fecha", "Tipo", "Comercio", "Categoria", "Monto CRC", "Nota"];
+  const csvRows = [
+    headers,
+    ...rows.map((movement) => [
+      movement.date,
+      movementTypeLabel(movement.type),
+      movement.merchant || "",
+      categoryName(movement.category),
+      Number(movement.amount || 0).toFixed(2),
+      movement.note || "",
+    ]),
+  ];
+  const csv = `\uFEFF${csvRows.map((row) => row.map(csvCell).join(",")).join("\n")}`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `cuenta-clara-movimientos-${toInputDate(new Date())}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(value) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function movementTypeLabel(type) {
+  if (type === "income") return "Ingreso";
+  if (type === "saving") return "Ahorro";
+  return "Gasto";
 }
 
 function renderMerchantSuggestions() {
