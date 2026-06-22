@@ -2341,7 +2341,7 @@ function normalizePendingMovements(payload) {
   return list
     .map((item) => {
       const merchant = String(item.merchant || item.comercio || item.name || "").trim();
-      const amount = Number(item.amount || item.monto || item.total || 0);
+      const amount = parseMoneyValue(item.amount || item.monto || item.total || 0);
       const date = normalizePendingDate(item.date || item.fecha || item.created_at) || toInputDate(new Date());
       const sourceId = String(item.sourceId || item.source_id || item.gmailMessageId || item.messageId || item.id || `${merchant}-${amount}-${date}`).trim();
       const textForCategory = `${merchant} ${item.note || item.nota || ""}`;
@@ -2367,6 +2367,21 @@ function normalizePendingDate(value) {
   const parsed = new Date(text);
   if (!Number.isNaN(parsed.getTime())) return toInputDate(parsed);
   return "";
+}
+
+function parseMoneyValue(value) {
+  if (typeof value === "number") return value;
+  const clean = String(value || "")
+    .replace(/[^\d.,-]/g, "")
+    .trim();
+  if (!clean) return 0;
+  const lastComma = clean.lastIndexOf(",");
+  const lastDot = clean.lastIndexOf(".");
+  const decimalSeparator = lastComma > lastDot ? "," : ".";
+  const normalized = clean
+    .replace(new RegExp(`\\${decimalSeparator === "," ? "." : ","}`, "g"), "")
+    .replace(decimalSeparator, ".");
+  return Number(normalized || 0);
 }
 
 function renderPendingInbox() {
