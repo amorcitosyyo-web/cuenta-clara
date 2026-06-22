@@ -263,7 +263,7 @@ body.auth-locked .auth-screen {
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(8, 1fr);
   gap: 8px;
   margin: 18px 0;
 }
@@ -424,11 +424,23 @@ body.auth-locked .auth-screen {
 .category-row,
 .movement-row,
 .budget-row,
-.saving-row {
+.saving-row,
+.pending-row {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 13px;
+}
+
+.pending-row {
+  display: grid;
+  gap: 12px;
+}
+
+.pending-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .due-payment {
@@ -706,6 +718,11 @@ select option {
   font-size: 0.9rem;
 }
 
+.inline-link {
+  color: var(--mint);
+  font-weight: 900;
+}
+
 .alert-card.warning {
   border-color: rgba(255, 189, 89, 0.45);
 }
@@ -940,9 +957,13 @@ select option {
     top: 0;
     z-index: 10;
     overflow-x: auto;
-    grid-template-columns: repeat(7, minmax(104px, 1fr));
+    grid-template-columns: repeat(8, minmax(108px, 1fr));
     padding: 8px 0;
     background: rgba(5, 31, 32, 0.94);
+  }
+
+  .pending-grid {
+    grid-template-columns: 1fr;
   }
 
   .quick-actions {

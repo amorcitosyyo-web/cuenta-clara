@@ -72,6 +72,7 @@ const els = {
   merchantInput: document.querySelector("#merchantInput"),
   merchantSuggestionPanel: document.querySelector("#merchantSuggestionPanel"),
   noteInput: document.querySelector("#noteInput"),
+  movementReceiptInput: document.querySelector("#movementReceiptInput"),
   movementSubmitBtn: document.querySelector("#movementSubmitBtn"),
   cancelMovementEditBtn: document.querySelector("#cancelMovementEditBtn"),
   receiptImageInput: document.querySelector("#receiptImageInput"),
@@ -120,6 +121,9 @@ const els = {
   historyDateTo: document.querySelector("#historyDateTo"),
   historyList: document.querySelector("#historyList"),
   downloadMovementsBtn: document.querySelector("#downloadMovementsBtn"),
+  inboxStatus: document.querySelector("#inboxStatus"),
+  syncEmailBtn: document.querySelector("#syncEmailBtn"),
+  pendingList: document.querySelector("#pendingList"),
   scheduledForm: document.querySelector("#scheduledForm"),
   scheduledNameInput: document.querySelector("#scheduledNameInput"),
   scheduledNameSuggestionPanel: document.querySelector("#scheduledNameSuggestionPanel"),
@@ -213,6 +217,8 @@ function bindEvents() {
   els.historyDateTo.addEventListener("change", renderHistory);
   els.historyList.addEventListener("click", handleMovementAction);
   els.downloadMovementsBtn.addEventListener("click", downloadMovementsCsv);
+  els.syncEmailBtn.addEventListener("click", syncEmailInbox);
+  els.pendingList.addEventListener("click", handlePendingAction);
   els.recentMovements.addEventListener("click", handleMovementAction);
   bindMerchantSuggestionInput(els.merchantInput, els.merchantSuggestionPanel);
   bindMerchantSuggestionInput(els.receiptMerchant, els.receiptMerchantSuggestionPanel);
@@ -350,6 +356,7 @@ async function signOut() {
 }
 
 async function loadRemoteData() {
+  const localData = normalizeData(loadData());
   const { data, error } = await remote.client
     .from("app_states")
     .select("data")
@@ -359,12 +366,21 @@ async function loadRemoteData() {
   if (error) throw error;
 
   if (data?.data) {
-    state.data = normalizeData(data.data);
+    const remoteData = normalizeData(data.data);
+    const localUpdated = Date.parse(localData.meta?.updatedAt || 0);
+    const remoteUpdated = Date.parse(remoteData.meta?.updatedAt || 0);
+    state.data = localUpdated > remoteUpdated ? localData : remoteData;
     categories = mergeCategories(state.data.customCategories);
+    if (localUpdated > remoteUpdated) {
+      await remote.client.from("app_states").upsert({
+        user_id: remote.user.id,
+        data: state.data,
+      });
+    }
     return;
   }
 
-  state.data = normalizeData(loadData());
+  state.data = localData;
   await remote.client.from("app_states").insert({
     user_id: remote.user.id,
     data: state.data,
@@ -502,8 +518,10 @@ function loadData() {
   if (stored) return JSON.parse(stored);
 
   return {
+    meta: { updatedAt: new Date(0).toISOString() },
     movements: [],
     budgets: {},
+    pendingMovements: [],
     savingsAccounts: [],
     customCategories: [],
     merchantRules: [],
@@ -524,6 +542,7 @@ function normalizeData(data) {
 
   const normalized = {
     movements: Array.isArray(data.movements) ? data.movements : [],
+    pendingMovements: Array.isArray(data.pendingMovements) ? data.pendingMovements : [],
     budgets: data.budgets || {},
     budgetHistory,
     customCategories: Array.isArray(data.customCategories) ? data.customCategories : [],
@@ -531,6 +550,9 @@ function normalizeData(data) {
     merchantRules: Array.isArray(data.merchantRules) ? data.merchantRules : [],
     scheduledPayments: Array.isArray(data.scheduledPayments) ? data.scheduledPayments : [],
     savingsAccounts: Array.isArray(data.savingsAccounts) ? data.savingsAccounts : [],
+    meta: {
+      updatedAt: data.meta?.updatedAt || new Date(0).toISOString(),
+    },
   };
 
   normalized.movements = normalized.movements.map((movement) => ({
@@ -548,6 +570,7 @@ function normalizeData(data) {
 }
 
 function saveData() {
+  state.data.meta = { ...(state.data.meta || {}), updatedAt: new Date().toISOString() };
   localStorage.setItem("cuenta-clara-data", JSON.stringify(state.data));
   scheduleRemoteSave();
 }
@@ -567,14 +590,16 @@ function makeMovement(type, amount, date, category, merchant, note = "", receipt
   };
 }
 
-function saveMovementFromForm(event) {
+async function saveMovementFromForm(event) {
   event.preventDefault();
+  els.movementSubmitBtn.disabled = true;
   const type = new FormData(els.movementForm).get("type");
   const available = getMovementCategories(type);
   const category = available.some((item) => item.id === els.categoryInput.value)
     ? els.categoryInput.value
     : available[0]?.id || "otros";
   const existing = state.data.movements.find((item) => item.id === state.editingMovementId);
+  const receipt = await readMovementReceiptInput();
 
   if (existing) {
     existing.type = type;
@@ -583,6 +608,7 @@ function saveMovementFromForm(event) {
     existing.category = category;
     existing.merchant = els.merchantInput.value.trim();
     existing.note = els.noteInput.value.trim();
+    if (receipt) existing.receipt = receipt;
   } else {
     state.data.movements.unshift(makeMovement(
       type,
@@ -591,16 +617,42 @@ function saveMovementFromForm(event) {
       category,
       els.merchantInput.value,
       els.noteInput.value,
+      receipt,
     ));
   }
 
   cancelMovementEdit(false);
   saveData();
   els.movementForm.reset();
+  els.movementSubmitBtn.disabled = false;
   setToday();
   populateMovementCategoryOptions();
   render();
   switchView("dashboard");
+}
+
+async function readMovementReceiptInput() {
+  const file = els.movementReceiptInput?.files?.[0];
+  if (!file) return null;
+  try {
+    return { image: await compressImage(file), source: "manual" };
+  } catch (error) {
+    try {
+      return { image: await readFileAsDataUrl(file), source: "manual" };
+    } catch (_fallbackError) {
+      console.error(error);
+      return null;
+    }
+  }
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => resolve(reader.result);
+    reader.readAsDataURL(file);
+  });
 }
 
 function startMovementEdit(id) {
@@ -1847,6 +1899,7 @@ function render() {
   renderBudgetList(monthMovements);
   renderSavings();
   renderHistory();
+  renderPendingInbox();
   renderScheduledPayments();
   renderMerchantSuggestions();
   checkScheduledNotifications();
@@ -2232,6 +2285,189 @@ function movementTypeLabel(type) {
   return "Gasto";
 }
 
+async function syncEmailInbox() {
+  els.syncEmailBtn.disabled = true;
+  els.inboxStatus.textContent = "Leyendo correos con Make...";
+  try {
+    const existingSourceIds = new Set((state.data.pendingMovements || []).map((item) => item.sourceId).filter(Boolean));
+    state.data.movements.forEach((movement) => {
+      if (movement.sourceId) existingSourceIds.add(movement.sourceId);
+    });
+    const response = await fetch("/api/sync-email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(await getAuthHeader()),
+      },
+      body: JSON.stringify({ existingSourceIds: [...existingSourceIds] }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "No se pudo leer el correo.");
+
+    const incoming = normalizePendingMovements(payload.items || payload.pending || payload.movements || payload);
+    const before = state.data.pendingMovements.length;
+    const known = new Set([
+      ...state.data.pendingMovements.map((item) => item.sourceId || item.id),
+      ...state.data.movements.map((item) => item.sourceId || item.id),
+    ]);
+    incoming.forEach((item) => {
+      const key = item.sourceId || item.id;
+      if (!known.has(key)) {
+        state.data.pendingMovements.unshift(item);
+        known.add(key);
+      }
+    });
+    saveData();
+    render();
+    const added = state.data.pendingMovements.length - before;
+    els.inboxStatus.textContent = added ? `${added} movimiento(s) nuevos por revisar.` : "No llegaron movimientos nuevos.";
+  } catch (error) {
+    console.error(error);
+    els.inboxStatus.textContent = error.message || "No se pudo conectar con Make.";
+  } finally {
+    els.syncEmailBtn.disabled = false;
+  }
+}
+
+async function getAuthHeader() {
+  if (!remote.enabled || !remote.client) return {};
+  const { data } = await remote.client.auth.getSession();
+  const token = data.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function normalizePendingMovements(payload) {
+  const list = Array.isArray(payload) ? payload : [];
+  return list
+    .map((item) => {
+      const merchant = String(item.merchant || item.comercio || item.name || "").trim();
+      const amount = Number(item.amount || item.monto || item.total || 0);
+      const date = normalizePendingDate(item.date || item.fecha || item.created_at) || toInputDate(new Date());
+      const sourceId = String(item.sourceId || item.source_id || item.gmailMessageId || item.messageId || item.id || `${merchant}-${amount}-${date}`).trim();
+      const textForCategory = `${merchant} ${item.note || item.nota || ""}`;
+      return {
+        id: createId(),
+        source: item.source || "email",
+        sourceId,
+        date,
+        merchant,
+        amount,
+        category: normalizeCategory(item.category || item.categoria || detectCategory(textForCategory)),
+        note: String(item.note || item.nota || item.description || "").trim(),
+        createdAt: new Date().toISOString(),
+      };
+    })
+    .filter((item) => item.merchant && item.amount > 0);
+}
+
+function normalizePendingDate(value) {
+  if (!value) return "";
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) return toInputDate(parsed);
+  return "";
+}
+
+function renderPendingInbox() {
+  const pending = state.data.pendingMovements || [];
+  if (!pending.length) {
+    els.pendingList.innerHTML = `<div class="empty">No hay movimientos pendientes.</div>`;
+    if (els.inboxStatus.textContent === "Movimientos pendientes por revisar") {
+      els.inboxStatus.textContent = "Bandeja limpia.";
+    }
+    return;
+  }
+
+  els.pendingList.innerHTML = pending.map((item) => `
+    <article class="pending-row" data-pending-id="${item.id}">
+      <div class="pending-grid">
+        <label class="field">
+          <span>Comercio</span>
+          <input data-pending-field="merchant" type="text" value="${escapeAttribute(item.merchant)}" />
+        </label>
+        <label class="field">
+          <span>Monto</span>
+          <input data-pending-field="amount" type="number" min="0" step="0.01" value="${Number(item.amount || 0)}" />
+        </label>
+        <label class="field">
+          <span>Fecha</span>
+          <input data-pending-field="date" type="date" value="${escapeAttribute(item.date)}" />
+        </label>
+        <label class="field">
+          <span>Categoria</span>
+          <select data-pending-field="category">${expenseCategoryOptions(item.category)}</select>
+        </label>
+      </div>
+      <label class="field">
+        <span>Nota</span>
+        <textarea data-pending-field="note" rows="2">${escapeHtml(item.note || "")}</textarea>
+      </label>
+      <div class="row-actions">
+        <button class="mini-button" data-action="accept-pending" data-id="${item.id}">Aceptar</button>
+        <button class="mini-button" data-action="save-pending" data-id="${item.id}">Guardar cambios</button>
+        <button class="mini-button icon-button-small danger" data-action="delete-pending" data-id="${item.id}" aria-label="Eliminar pendiente" title="Eliminar">🗑️</button>
+      </div>
+    </article>
+  `).join("");
+  els.inboxStatus.textContent = `${pending.length} pendiente(s) por revisar.`;
+}
+
+function expenseCategoryOptions(selected) {
+  return categories
+    .filter((category) => category.kind === "expense")
+    .map((category) => `<option value="${category.id}" ${category.id === selected ? "selected" : ""}>${category.name}</option>`)
+    .join("");
+}
+
+async function handlePendingAction(event) {
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+  const id = button.dataset.id;
+  if (button.dataset.action === "save-pending") {
+    updatePendingFromRow(id);
+    saveData();
+    renderPendingInbox();
+  }
+  if (button.dataset.action === "accept-pending") acceptPendingMovement(id);
+  if (button.dataset.action === "delete-pending") deletePendingMovement(id);
+}
+
+function updatePendingFromRow(id) {
+  const item = state.data.pendingMovements.find((pending) => pending.id === id);
+  const row = document.querySelector(`[data-pending-id="${id}"]`);
+  if (!item || !row) return null;
+  item.merchant = row.querySelector('[data-pending-field="merchant"]').value.trim();
+  item.amount = Number(row.querySelector('[data-pending-field="amount"]').value || 0);
+  item.date = row.querySelector('[data-pending-field="date"]').value;
+  item.category = row.querySelector('[data-pending-field="category"]').value;
+  item.note = row.querySelector('[data-pending-field="note"]').value.trim();
+  return item;
+}
+
+function acceptPendingMovement(id) {
+  const item = updatePendingFromRow(id);
+  if (!item || !item.amount || !item.date) return;
+  const movement = makeMovement("expense", item.amount, item.date, item.category, item.merchant, item.note);
+  movement.source = item.source;
+  movement.sourceId = item.sourceId;
+  state.data.movements.unshift(movement);
+  state.data.pendingMovements = state.data.pendingMovements.filter((pending) => pending.id !== id);
+  saveData();
+  render();
+  switchView("history");
+}
+
+async function deletePendingMovement(id) {
+  const item = state.data.pendingMovements.find((pending) => pending.id === id);
+  if (!item) return;
+  const confirmed = await confirmDeleteApp(`Eliminar el pendiente "${item.merchant}"?`, "Eliminar pendiente");
+  if (!confirmed) return;
+  state.data.pendingMovements = state.data.pendingMovements.filter((pending) => pending.id !== id);
+  saveData();
+  render();
+}
+
 function renderMerchantSuggestions() {
   // Suggestions are rendered on focus/input by bindMerchantSuggestionInput.
 }
@@ -2323,12 +2559,15 @@ function renderMovementRow(item) {
     expense: { sign: "-", className: "expense", label: "Gasto" },
     saving: { sign: item.amount < 0 ? "←" : "→", className: "saving", label: item.amount < 0 ? "Retiro de ahorro" : "Ahorro" },
   }[item.type];
+  const receiptLink = item.receipt?.image
+    ? ` · <a class="inline-link" href="${item.receipt.image}" target="_blank" rel="noopener">Ver foto</a>`
+    : "";
 
   return `
     <article class="movement-row">
       <div>
         <strong>${escapeHtml(item.merchant || categoryName(item.category))}</strong>
-        <p>${displayDate(item.date)} · ${config.label} · ${categoryName(item.category)}${item.note ? ` · ${escapeHtml(item.note)}` : ""}</p>
+        <p>${displayDate(item.date)} · ${config.label} · ${categoryName(item.category)}${item.note ? ` · ${escapeHtml(item.note)}` : ""}${receiptLink}</p>
       </div>
       <div class="movement-side">
         <strong class="${config.className}">${config.sign}${money(Math.abs(item.amount))}</strong>
@@ -2452,6 +2691,10 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value);
 }
 
 function createId() {

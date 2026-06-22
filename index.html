@@ -91,6 +91,7 @@
           <button class="tab active" data-view="dashboard">Inicio</button>
           <button class="tab" data-view="movement">Agregar</button>
           <button class="tab" data-view="receipt">Factura</button>
+          <button class="tab" data-view="inbox">Bandeja</button>
           <button class="tab" data-view="budgets">Presupuesto</button>
           <button class="tab" data-view="savings">Ahorros</button>
           <button class="tab" data-view="scheduled">Gastos programados</button>
@@ -180,11 +181,27 @@
               <textarea id="noteInput" rows="3" placeholder="Opcional"></textarea>
             </label>
 
+            <label class="field">
+              <span>Foto de factura opcional</span>
+              <input id="movementReceiptInput" type="file" accept="image/*" />
+            </label>
+
             <div class="form-actions">
               <button class="primary-button" id="movementSubmitBtn" type="submit">Guardar movimiento</button>
               <button class="secondary-button" id="cancelMovementEditBtn" type="button" hidden>Cancelar edicion</button>
             </div>
           </form>
+        </section>
+
+        <section class="view" id="inboxView">
+          <div class="section-heading compact">
+            <div>
+              <h2>Bandeja</h2>
+              <span id="inboxStatus">Movimientos pendientes por revisar</span>
+            </div>
+            <button class="secondary-button" id="syncEmailBtn" type="button">Leer correo</button>
+          </div>
+          <div class="movement-list" id="pendingList"></div>
         </section>
 
         <section class="view" id="receiptView">
