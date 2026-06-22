@@ -2394,38 +2394,57 @@ function renderPendingInbox() {
     return;
   }
 
-  els.pendingList.innerHTML = pending.map((item) => `
-    <article class="pending-row" data-pending-id="${item.id}">
-      <div class="pending-grid">
-        <label class="field">
-          <span>Comercio</span>
-          <input data-pending-field="merchant" type="text" value="${escapeAttribute(item.merchant)}" />
-        </label>
-        <label class="field">
-          <span>Monto</span>
-          <input data-pending-field="amount" type="number" min="0" step="0.01" value="${Number(item.amount || 0)}" />
-        </label>
-        <label class="field">
-          <span>Fecha</span>
-          <input data-pending-field="date" type="date" value="${escapeAttribute(item.date)}" />
-        </label>
-        <label class="field">
-          <span>Categoria</span>
-          <select data-pending-field="category">${expenseCategoryOptions(item.category)}</select>
-        </label>
+  els.pendingList.innerHTML = pending.map(renderPendingRow).join("");
+  els.inboxStatus.textContent = `${pending.length} pendiente(s) por revisar.`;
+}
+
+function renderPendingRow(item) {
+  return `
+    <article class="pending-row compact-pending-row" data-pending-id="${item.id}">
+      <div class="pending-summary">
+        <div class="pending-copy">
+          <strong>${escapeHtml(item.merchant || "Movimiento pendiente")}</strong>
+          <p>${displayDate(item.date)} · Gasto · ${categoryName(item.category)}${item.note ? ` · ${escapeHtml(item.note)}` : ""}</p>
+        </div>
+        <div class="pending-side">
+          <strong class="expense">-${money(Math.abs(item.amount || 0))}</strong>
+          <div class="row-actions">
+            <button class="mini-button icon-button-small success" data-action="accept-pending" data-id="${item.id}" aria-label="Aceptar pendiente" title="Aceptar">✓</button>
+            <button class="mini-button icon-button-small" data-action="edit-pending" data-id="${item.id}" aria-label="Editar pendiente" title="Editar">✏️</button>
+            <button class="mini-button icon-button-small danger" data-action="delete-pending" data-id="${item.id}" aria-label="Rechazar pendiente" title="Rechazar">×</button>
+          </div>
+        </div>
       </div>
-      <label class="field">
-        <span>Nota</span>
-        <textarea data-pending-field="note" rows="2">${escapeHtml(item.note || "")}</textarea>
-      </label>
-      <div class="row-actions">
-        <button class="mini-button" data-action="accept-pending" data-id="${item.id}">Aceptar</button>
-        <button class="mini-button" data-action="save-pending" data-id="${item.id}">Guardar cambios</button>
-        <button class="mini-button icon-button-small danger" data-action="delete-pending" data-id="${item.id}" aria-label="Eliminar pendiente" title="Eliminar">🗑️</button>
+      <div class="pending-editor" hidden>
+        <div class="pending-grid">
+          <label class="field">
+            <span>Comercio</span>
+            <input data-pending-field="merchant" type="text" value="${escapeAttribute(item.merchant)}" />
+          </label>
+          <label class="field">
+            <span>Monto</span>
+            <input data-pending-field="amount" type="number" min="0" step="0.01" value="${Number(item.amount || 0)}" />
+          </label>
+          <label class="field">
+            <span>Fecha</span>
+            <input data-pending-field="date" type="date" value="${escapeAttribute(item.date)}" />
+          </label>
+          <label class="field">
+            <span>Categoria</span>
+            <select data-pending-field="category">${expenseCategoryOptions(item.category)}</select>
+          </label>
+        </div>
+        <label class="field">
+          <span>Nota</span>
+          <textarea data-pending-field="note" rows="2">${escapeHtml(item.note || "")}</textarea>
+        </label>
+        <div class="row-actions">
+          <button class="mini-button" data-action="save-pending" data-id="${item.id}">Guardar</button>
+          <button class="mini-button" data-action="cancel-edit-pending" data-id="${item.id}">Cerrar</button>
+        </div>
       </div>
     </article>
-  `).join("");
-  els.inboxStatus.textContent = `${pending.length} pendiente(s) por revisar.`;
+  `;
 }
 
 function expenseCategoryOptions(selected) {
@@ -2444,8 +2463,17 @@ async function handlePendingAction(event) {
     saveData();
     renderPendingInbox();
   }
+  if (button.dataset.action === "edit-pending") togglePendingEditor(id, true);
+  if (button.dataset.action === "cancel-edit-pending") togglePendingEditor(id, false);
   if (button.dataset.action === "accept-pending") acceptPendingMovement(id);
   if (button.dataset.action === "delete-pending") deletePendingMovement(id);
+}
+
+function togglePendingEditor(id, shouldOpen) {
+  const row = document.querySelector(`[data-pending-id="${id}"]`);
+  const editor = row?.querySelector(".pending-editor");
+  if (!editor) return;
+  editor.hidden = !shouldOpen;
 }
 
 function updatePendingFromRow(id) {
@@ -2470,7 +2498,7 @@ function acceptPendingMovement(id) {
   state.data.pendingMovements = state.data.pendingMovements.filter((pending) => pending.id !== id);
   saveData();
   render();
-  switchView("history");
+  switchView("inbox");
 }
 
 async function deletePendingMovement(id) {

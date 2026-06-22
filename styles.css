@@ -437,6 +437,50 @@ body.auth-locked .auth-screen {
   gap: 12px;
 }
 
+.compact-pending-row {
+  padding: 14px;
+}
+
+.pending-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.pending-copy {
+  min-width: 0;
+}
+
+.pending-copy strong {
+  display: block;
+  line-height: 1.1;
+}
+
+.pending-copy p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.25;
+}
+
+.pending-side {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.pending-editor {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.pending-editor[hidden] {
+  display: none;
+}
+
 .pending-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -520,6 +564,11 @@ body.auth-locked .auth-screen {
 .primary-button.danger {
   background: rgba(255, 111, 118, 0.16);
   color: var(--rose);
+}
+
+.mini-button.success {
+  background: rgba(216, 255, 85, 0.16);
+  color: var(--lime);
 }
 
 .mini-button.paid-toggle {
@@ -964,6 +1013,18 @@ select option {
 
   .pending-grid {
     grid-template-columns: 1fr;
+  }
+
+  .pending-summary {
+    gap: 8px;
+  }
+
+  .pending-copy p {
+    font-size: 0.86rem;
+  }
+
+  .pending-side strong {
+    font-size: 0.95rem;
   }
 
   .quick-actions {
