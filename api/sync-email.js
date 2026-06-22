@@ -89,6 +89,59 @@ function parseJson(text) {
   try {
     return JSON.parse(text);
   } catch (_error) {
-    return { items: [] };
+    return parseConcatenatedJson(text);
   }
+}
+
+function parseConcatenatedJson(text) {
+  const chunks = splitConcatenatedJsonObjects(text);
+  const items = [];
+  chunks.forEach((chunk) => {
+    try {
+      items.push(...normalizeMakeItems(JSON.parse(chunk)));
+    } catch (_error) {
+      // Ignore malformed fragments and keep any valid movement objects.
+    }
+  });
+  return { items };
+}
+
+function splitConcatenatedJsonObjects(text) {
+  const chunks = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (inString) {
+      escaped = char === "\\" && !escaped;
+      if (char === "\"" && !escaped) inString = false;
+      if (char !== "\\") escaped = false;
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{") {
+      if (depth === 0) start = index;
+      depth += 1;
+      continue;
+    }
+
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        chunks.push(text.slice(start, index + 1));
+        start = -1;
+      }
+    }
+  }
+
+  return chunks;
 }
