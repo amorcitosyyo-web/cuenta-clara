@@ -2337,7 +2337,7 @@ async function getAuthHeader() {
 }
 
 function normalizePendingMovements(payload) {
-  const list = Array.isArray(payload) ? payload : [];
+  const list = expandPendingMovementItems(Array.isArray(payload) ? payload : []);
   return list
     .map((item) => {
       const merchant = String(item.merchant || item.comercio || item.name || "").trim();
@@ -2358,6 +2358,25 @@ function normalizePendingMovements(payload) {
       };
     })
     .filter((item) => item.merchant && item.amount > 0);
+}
+
+function expandPendingMovementItems(list) {
+  return list.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const arrayKeys = ["sourceId", "source_id", "gmailMessageId", "messageId", "date", "fecha", "merchant", "comercio", "amount", "monto", "note", "nota", "category", "categoria"];
+    const maxLength = arrayKeys.reduce((max, key) => (
+      Array.isArray(item[key]) ? Math.max(max, item[key].length) : max
+    ), 0);
+    if (!maxLength) return [item];
+
+    return Array.from({ length: maxLength }, (_, index) => {
+      const expanded = { ...item };
+      Object.keys(expanded).forEach((key) => {
+        if (Array.isArray(expanded[key])) expanded[key] = expanded[key][index] ?? "";
+      });
+      return expanded;
+    });
+  });
 }
 
 function normalizePendingDate(value) {
