@@ -1912,14 +1912,14 @@ function render() {
   const monthMovements = getMonthMovements();
   syncBudgetsForActiveMonth();
   const totals = calculateTotals(monthMovements);
-  const available = totals.income - totals.expense - totals.saving;
+  const available = totals.income - totals.expense;
 
   els.monthTitle.textContent = state.activeMonth.toLocaleDateString("es-CR", { month: "long", year: "numeric" });
   els.incomeTotal.textContent = money(totals.income);
   els.expenseTotal.textContent = money(totals.expense);
   els.savingTotal.textContent = money(totals.saving);
   els.balanceTotal.textContent = money(available);
-  els.balanceHint.textContent = available >= 0 ? "Despues de gastos y ahorros" : "Estan por debajo del disponible";
+  els.balanceHint.textContent = available >= 0 ? "Ingresos menos gastos" : "Los gastos superan los ingresos";
   els.availableForSaving.textContent = `Disponible ${money(available)}`;
 
   renderBudgetSummary(monthMovements);
@@ -2166,7 +2166,7 @@ function buildAdvisorContext() {
   const byCategory = groupExpensesByCategory(expenses);
   const alerts = buildAlerts(monthMovements);
   const budgetTotal = Object.values(budgets).reduce((sum, amount) => sum + Number(amount || 0), 0);
-  const available = totals.income - totals.expense - totals.saving;
+  const available = totals.income - totals.expense;
 
   return {
     activeMonthKey: activeKey,
@@ -2385,7 +2385,6 @@ function renderMonthlyChart(totals) {
   const values = [
     { label: "Ingreso", amount: totals.income, color: "var(--lime)" },
     { label: "Gasto", amount: totals.expense, color: "var(--rose)" },
-    { label: "Ahorro", amount: totals.saving, color: "var(--blue)" },
   ];
   const max = Math.max(...values.map((item) => item.amount), 1);
 
