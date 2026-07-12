@@ -138,6 +138,8 @@ const els = {
   enableNotificationsBtn: document.querySelector("#enableNotificationsBtn"),
   advisorOpenBtn: document.querySelector("#advisorOpenBtn"),
   advisorCloseBtn: document.querySelector("#advisorCloseBtn"),
+  advisorClearBtn: document.querySelector("#advisorClearBtn"),
+  advisorQuickActions: document.querySelector("#advisorQuickActions"),
   advisorDock: document.querySelector("#advisorDock"),
   advisorStatus: document.querySelector("#advisorStatus"),
   advisorChart: document.querySelector("#advisorChart"),
@@ -164,12 +166,15 @@ const els = {
 
 let confirmDeleteResolver = null;
 let lastFloatingAlertKey = "";
+const initialAdvisorMessage = {
+  role: "assistant",
+  text: "Hola. Puedo revisar el mes actual, presupuestos, ahorros y movimientos para darles ideas claras. No cambio nada sin que ustedes lo hagan.",
+  insights: [],
+  actions: [],
+};
 const advisorMessages = [
   {
-    role: "assistant",
-    text: "Hola. Puedo revisar el mes actual, presupuestos, ahorros y movimientos para darles ideas claras. No cambio nada sin que ustedes lo hagan.",
-    insights: [],
-    actions: [],
+    ...initialAdvisorMessage,
   },
 ];
 
@@ -252,6 +257,7 @@ function bindEvents() {
   els.enableNotificationsBtn.addEventListener("click", requestNotifications);
   els.advisorOpenBtn.addEventListener("click", openAdvisorDock);
   els.advisorCloseBtn.addEventListener("click", closeAdvisorDock);
+  els.advisorClearBtn.addEventListener("click", clearAdvisorChat);
   els.advisorForm.addEventListener("submit", handleAdvisorSubmit);
   document.querySelectorAll("[data-advisor-prompt]").forEach((button) => {
     button.addEventListener("click", () => askAdvisor(button.dataset.advisorPrompt));
@@ -2030,6 +2036,8 @@ function renderAlerts(alerts) {
 
 function renderAdvisorMessages() {
   if (!els.advisorMessages) return;
+  const hasConversation = advisorMessages.some((message) => message.role === "user");
+  if (els.advisorQuickActions) els.advisorQuickActions.hidden = hasConversation;
   els.advisorMessages.innerHTML = advisorMessages.map((message) => `
     <article class="advisor-message ${message.role}">
       <p>${escapeHtml(message.text)}</p>
@@ -2063,6 +2071,15 @@ function openAdvisorDock() {
 function closeAdvisorDock() {
   els.advisorDock.hidden = true;
   document.body.classList.remove("advisor-open");
+}
+
+function clearAdvisorChat() {
+  advisorMessages.splice(0, advisorMessages.length, { ...initialAdvisorMessage });
+  els.advisorInput.value = "";
+  els.advisorStatus.textContent = "Pregunta sobre gastos, presupuesto y ahorro";
+  renderAdvisorChart(null);
+  renderAdvisorMessages();
+  setTimeout(() => els.advisorInput.focus(), 50);
 }
 
 function renderAdvisorChart(chart) {

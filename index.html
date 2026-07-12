@@ -449,10 +449,14 @@
             <h2>Asesor financiero</h2>
             <span id="advisorStatus">Pregunta sobre gastos, presupuesto y ahorro</span>
           </div>
-          <button class="mini-button icon-button-small" id="advisorCloseBtn" type="button" aria-label="Cerrar asesor">×</button>
+          <div class="advisor-header-actions">
+            <button class="mini-button" id="advisorClearBtn" type="button">Limpiar</button>
+            <button class="mini-button icon-button-small" id="advisorCloseBtn" type="button" aria-label="Cerrar asesor">×</button>
+          </div>
         </div>
 
-        <div class="advisor-quick-actions">
+        <div class="advisor-quick-actions" id="advisorQuickActions">
+          <p>Elige por donde empezamos</p>
           <button class="secondary-button" type="button" data-advisor-prompt="Haz un resumen claro del mes actual y dime que esta bien y que hay que cuidar.">Resumen</button>
           <button class="secondary-button" type="button" data-advisor-prompt="Dime en que se esta yendo mas el dinero este mes y que acciones concretas recomiendas.">Gastos fuertes</button>
           <button class="secondary-button" type="button" data-advisor-prompt="Revisa los presupuestos del mes y sugiere ajustes realistas por categoria.">Presupuesto</button>
