@@ -2242,7 +2242,7 @@ function getFilteredHistoryRows() {
 }
 
 function downloadMovementsCsv() {
-  const rows = getFilteredHistoryRows();
+  const rows = getDateFilteredMovementsForCsv();
   if (!rows.length) {
     els.downloadMovementsBtn.textContent = "Sin datos";
     setTimeout(() => {
@@ -2268,11 +2268,27 @@ function downloadMovementsCsv() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `cuenta-clara-movimientos-${toInputDate(new Date())}.csv`;
+  link.download = csvDownloadName();
   document.body.appendChild(link);
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function getDateFilteredMovementsForCsv() {
+  const dateFrom = els.historyDateFrom.value;
+  const dateTo = els.historyDateTo.value;
+  return state.data.movements
+    .filter((item) => !dateFrom || item.date >= dateFrom)
+    .filter((item) => !dateTo || item.date <= dateTo)
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function csvDownloadName() {
+  const dateFrom = els.historyDateFrom.value;
+  const dateTo = els.historyDateTo.value;
+  const suffix = dateFrom || dateTo ? `${dateFrom || "inicio"}-${dateTo || "hoy"}` : toInputDate(new Date());
+  return `cuenta-clara-movimientos-${suffix}.csv`;
 }
 
 function csvCell(value) {
