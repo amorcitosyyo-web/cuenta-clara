@@ -203,7 +203,14 @@
               <h2>Bandeja</h2>
               <span id="inboxStatus">Movimientos pendientes por revisar</span>
             </div>
-            <button class="secondary-button" id="syncEmailBtn" type="button">Leer correo</button>
+            <div class="heading-actions">
+              <button class="secondary-button" id="downloadTemplateBtn" type="button">Plantilla CSV</button>
+              <label class="secondary-button file-button">
+                Subir CSV
+                <input id="bulkImportInput" type="file" accept=".csv,text/csv" />
+              </label>
+              <button class="secondary-button" id="syncEmailBtn" type="button">Leer correo</button>
+            </div>
           </div>
           <div class="movement-list" id="pendingList"></div>
         </section>

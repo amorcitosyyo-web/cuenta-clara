@@ -313,6 +313,13 @@ body.auth-locked .auth-screen {
   margin: 0;
 }
 
+.heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .glass-panel .section-heading {
   margin-top: 0;
 }
@@ -722,6 +729,17 @@ select option {
   color: var(--mint);
 }
 
+.file-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.file-button input {
+  display: none;
+}
+
 .form-actions {
   display: grid;
   grid-template-columns: 1fr;
@@ -1025,6 +1043,20 @@ select option {
 
   .pending-side strong {
     font-size: 0.95rem;
+  }
+
+  .section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .section-heading span {
+    text-align: left;
+  }
+
+  .heading-actions {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .quick-actions {

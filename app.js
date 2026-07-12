@@ -122,6 +122,8 @@ const els = {
   historyList: document.querySelector("#historyList"),
   downloadMovementsBtn: document.querySelector("#downloadMovementsBtn"),
   inboxStatus: document.querySelector("#inboxStatus"),
+  downloadTemplateBtn: document.querySelector("#downloadTemplateBtn"),
+  bulkImportInput: document.querySelector("#bulkImportInput"),
   syncEmailBtn: document.querySelector("#syncEmailBtn"),
   pendingList: document.querySelector("#pendingList"),
   scheduledForm: document.querySelector("#scheduledForm"),
@@ -217,6 +219,8 @@ function bindEvents() {
   els.historyDateTo.addEventListener("change", renderHistory);
   els.historyList.addEventListener("click", handleMovementAction);
   els.downloadMovementsBtn.addEventListener("click", downloadMovementsCsv);
+  els.downloadTemplateBtn.addEventListener("click", downloadImportTemplate);
+  els.bulkImportInput.addEventListener("change", importMovementsFromCsv);
   els.syncEmailBtn.addEventListener("click", syncEmailInbox);
   els.pendingList.addEventListener("click", handlePendingAction);
   els.recentMovements.addEventListener("click", handleMovementAction);
@@ -2293,6 +2297,139 @@ function csvDownloadName() {
 
 function csvCell(value) {
   return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function downloadImportTemplate() {
+  const rows = [
+    ["fecha", "comercio", "monto", "categoria", "nota"],
+    ["2026-07-12", "SUPER LA AMISTAD TIBAS", "24110.00", "", "Compra del super"],
+    ["2026-07-12", "UBER RIDES", "1590.00", "", "Viaje"],
+  ];
+  const csv = `\uFEFF${rows.map((row) => row.map(csvCell).join(",")).join("\n")}`;
+  downloadCsvFile(csv, "plantilla-cuenta-clara.csv");
+}
+
+async function importMovementsFromCsv(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  els.inboxStatus.textContent = "Leyendo archivo...";
+
+  try {
+    const text = await file.text();
+    const rows = parseCsvText(text);
+    const imported = rows.map((row, index) => {
+      const merchant = getImportValue(row, ["comercio", "merchant", "nombre", "descripcion", "detalle"]);
+      const amount = getImportValue(row, ["monto", "monto crc", "amount", "total", "valor"]);
+      const date = getImportValue(row, ["fecha", "date"]);
+      const category = getImportValue(row, ["categoria", "category"]);
+      const note = getImportValue(row, ["nota", "note", "observacion", "observaciones"]);
+      return {
+        source: "archivo",
+        sourceId: `archivo-${normalizeMerchantKey(merchant)}-${amount}-${date}-${index}`,
+        merchant,
+        amount,
+        date,
+        category,
+        note,
+      };
+    });
+    const pending = normalizePendingMovements(imported);
+    const before = state.data.pendingMovements.length;
+    const known = new Set([
+      ...state.data.pendingMovements.map((item) => item.sourceId || item.id),
+      ...state.data.movements.map((item) => item.sourceId || item.id),
+    ]);
+
+    pending.forEach((item) => {
+      const key = item.sourceId || item.id;
+      if (!known.has(key)) {
+        state.data.pendingMovements.unshift(item);
+        known.add(key);
+      }
+    });
+
+    saveData();
+    render();
+    switchView("inbox");
+    const added = state.data.pendingMovements.length - before;
+    els.inboxStatus.textContent = added
+      ? `${added} movimiento(s) importados por revisar.`
+      : "No se importaron movimientos nuevos.";
+  } catch (error) {
+    console.error(error);
+    els.inboxStatus.textContent = "No pude leer ese CSV. Revisa la plantilla.";
+  } finally {
+    event.target.value = "";
+  }
+}
+
+function parseCsvText(text) {
+  const lines = parseCsvRows(text).filter((row) => row.some((cell) => String(cell || "").trim()));
+  if (lines.length < 2) return [];
+  const headers = lines[0].map(normalizeImportHeader);
+  return lines.slice(1).map((line) => {
+    const row = {};
+    headers.forEach((header, index) => {
+      row[header] = String(line[index] || "").trim();
+    });
+    return row;
+  });
+}
+
+function parseCsvRows(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  const cleanText = String(text || "").replace(/^\uFEFF/, "");
+
+  for (let index = 0; index < cleanText.length; index += 1) {
+    const char = cleanText[index];
+    const next = cleanText[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      cell += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      row.push(cell);
+      cell = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+
+  row.push(cell);
+  rows.push(row);
+  return rows;
+}
+
+function getImportValue(row, aliases) {
+  const keys = aliases.map(normalizeImportHeader);
+  const compactKeys = keys.map((key) => key.replace(/\s+/g, ""));
+  return Object.entries(row).find(([key]) => keys.includes(key) || compactKeys.includes(key.replace(/\s+/g, "")))?.[1] || "";
+}
+
+function normalizeImportHeader(value) {
+  return normalizeSearchText(value).replace(/[()]/g, "").trim();
+}
+
+function downloadCsvFile(csv, fileName) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function movementTypeLabel(type) {
