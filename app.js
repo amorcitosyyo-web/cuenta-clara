@@ -2055,12 +2055,14 @@ function renderAdvisorMessages() {
 
 function openAdvisorDock() {
   els.advisorDock.hidden = false;
+  document.body.classList.add("advisor-open");
   renderAdvisorMessages();
   setTimeout(() => els.advisorInput.focus(), 50);
 }
 
 function closeAdvisorDock() {
   els.advisorDock.hidden = true;
+  document.body.classList.remove("advisor-open");
 }
 
 function renderAdvisorChart(chart) {
@@ -2118,6 +2120,7 @@ async function askAdvisor(question) {
       body: JSON.stringify({
         question: cleanQuestion,
         context: buildAdvisorContext(),
+        conversation: buildAdvisorConversation(),
       }),
     });
     const payload = await response.json().catch(() => ({}));
@@ -2135,7 +2138,7 @@ async function askAdvisor(question) {
     console.error(error);
     advisorMessages.push({
       role: "assistant",
-      text: error.message || "No pude conectar con el asesor. Revisa que GEMINI_API_KEY este configurada.",
+      text: error.message || "No pude conectar con el asesor. Revisa que OPENAI_API_KEY o GEMINI_API_KEY este configurada.",
       insights: [],
       actions: [],
     });
@@ -2144,6 +2147,14 @@ async function askAdvisor(question) {
     renderAdvisorMessages();
     els.advisorSubmitBtn.disabled = false;
   }
+}
+
+function buildAdvisorConversation() {
+  return advisorMessages.slice(-12).map((message) => ({
+    role: message.role === "user" ? "user" : "assistant",
+    text: String(message.text || "").slice(0, 1200),
+    insights: Array.isArray(message.insights) ? message.insights.slice(0, 3).map(String) : [],
+  }));
 }
 
 function buildAdvisorContext() {
