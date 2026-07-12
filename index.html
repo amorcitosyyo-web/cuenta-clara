@@ -436,6 +436,40 @@
       </main>
     </div>
 
+    <button class="advisor-fab" id="advisorOpenBtn" type="button" aria-label="Abrir asesor financiero">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.6 8.6 0 0 1-7.7 4.7 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.2A8.5 8.5 0 1 1 21 11.5Z" />
+        <path d="M8 10.5h8M8 13.5h5.5" />
+      </svg>
+    </button>
+    <section class="advisor-dock" id="advisorDock" hidden>
+      <article class="glass-panel advisor-panel">
+        <div class="section-heading compact advisor-header">
+          <div>
+            <h2>Asesor financiero</h2>
+            <span id="advisorStatus">Pregunta sobre gastos, presupuesto y ahorro</span>
+          </div>
+          <button class="mini-button icon-button-small" id="advisorCloseBtn" type="button" aria-label="Cerrar asesor">×</button>
+        </div>
+
+        <div class="advisor-quick-actions">
+          <button class="secondary-button" type="button" data-advisor-prompt="Haz un resumen claro del mes actual y dime que esta bien y que hay que cuidar.">Resumen</button>
+          <button class="secondary-button" type="button" data-advisor-prompt="Dime en que se esta yendo mas el dinero este mes y que acciones concretas recomiendas.">Gastos fuertes</button>
+          <button class="secondary-button" type="button" data-advisor-prompt="Revisa los presupuestos del mes y sugiere ajustes realistas por categoria.">Presupuesto</button>
+          <button class="secondary-button" type="button" data-advisor-prompt="Analiza nuestro ahorro este mes y dime como podemos mejorar sin apretarnos demasiado.">Ahorro</button>
+          <button class="secondary-button" type="button" data-advisor-prompt="Crea un grafico simple con las categorias donde mas gastamos este mes y explicalo.">Grafico</button>
+        </div>
+
+        <div class="advisor-chart" id="advisorChart" hidden></div>
+        <div class="advisor-messages" id="advisorMessages"></div>
+
+        <form class="advisor-form" id="advisorForm">
+          <textarea id="advisorInput" rows="2" placeholder="Ej. Que tenemos que mejorar este mes?" required></textarea>
+          <button class="primary-button" id="advisorSubmitBtn" type="submit">Preguntar</button>
+        </form>
+      </article>
+    </section>
+
     <div class="confirm-modal" id="confirmModal" hidden>
       <div class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
         <p class="eyebrow">Confirmacion</p>
@@ -450,8 +484,13 @@
 
     <div class="confirm-modal" id="floatingAlertModal" hidden>
       <div class="confirm-card alert-dialog" role="dialog" aria-modal="true" aria-labelledby="floatingAlertTitle">
-        <p class="eyebrow">Aviso importante</p>
-        <h2 id="floatingAlertTitle">Revisen esto</h2>
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">Aviso importante</p>
+            <h2 id="floatingAlertTitle">Revisen esto</h2>
+          </div>
+          <button class="mini-button icon-button-small" id="floatingAlertCloseBtn" type="button" aria-label="Cerrar aviso">×</button>
+        </div>
         <div class="floating-alert-list" id="floatingAlertList"></div>
         <div class="form-actions single-action">
           <button class="primary-button" id="floatingAlertOkBtn" type="button">OK</button>

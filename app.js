@@ -136,6 +136,15 @@ const els = {
   scheduledMonthlyInput: document.querySelector("#scheduledMonthlyInput"),
   scheduledList: document.querySelector("#scheduledList"),
   enableNotificationsBtn: document.querySelector("#enableNotificationsBtn"),
+  advisorOpenBtn: document.querySelector("#advisorOpenBtn"),
+  advisorCloseBtn: document.querySelector("#advisorCloseBtn"),
+  advisorDock: document.querySelector("#advisorDock"),
+  advisorStatus: document.querySelector("#advisorStatus"),
+  advisorChart: document.querySelector("#advisorChart"),
+  advisorMessages: document.querySelector("#advisorMessages"),
+  advisorForm: document.querySelector("#advisorForm"),
+  advisorInput: document.querySelector("#advisorInput"),
+  advisorSubmitBtn: document.querySelector("#advisorSubmitBtn"),
   confirmModal: document.querySelector("#confirmModal"),
   confirmTitle: document.querySelector("#confirmTitle"),
   confirmMessage: document.querySelector("#confirmMessage"),
@@ -143,6 +152,7 @@ const els = {
   confirmOkBtn: document.querySelector("#confirmOkBtn"),
   floatingAlertModal: document.querySelector("#floatingAlertModal"),
   floatingAlertList: document.querySelector("#floatingAlertList"),
+  floatingAlertCloseBtn: document.querySelector("#floatingAlertCloseBtn"),
   floatingAlertOkBtn: document.querySelector("#floatingAlertOkBtn"),
   authScreen: document.querySelector("#authScreen"),
   authForm: document.querySelector("#authForm"),
@@ -154,6 +164,14 @@ const els = {
 
 let confirmDeleteResolver = null;
 let lastFloatingAlertKey = "";
+const advisorMessages = [
+  {
+    role: "assistant",
+    text: "Hola. Puedo revisar el mes actual, presupuestos, ahorros y movimientos para darles ideas claras. No cambio nada sin que ustedes lo hagan.",
+    insights: [],
+    actions: [],
+  },
+];
 
 init();
 
@@ -218,6 +236,8 @@ function bindEvents() {
   els.historyDateFrom.addEventListener("change", renderHistory);
   els.historyDateTo.addEventListener("change", renderHistory);
   els.historyList.addEventListener("click", handleMovementAction);
+  els.categoryBreakdown.addEventListener("click", handleCategoryDrilldown);
+  els.alertsList.addEventListener("click", handleAlertDrilldown);
   els.downloadMovementsBtn.addEventListener("click", downloadMovementsCsv);
   els.downloadTemplateBtn.addEventListener("click", downloadImportTemplate);
   els.bulkImportInput.addEventListener("change", importMovementsFromCsv);
@@ -230,15 +250,24 @@ function bindEvents() {
   els.scheduledForm.addEventListener("submit", saveScheduledPayment);
   els.scheduledList.addEventListener("click", handleScheduledAction);
   els.enableNotificationsBtn.addEventListener("click", requestNotifications);
+  els.advisorOpenBtn.addEventListener("click", openAdvisorDock);
+  els.advisorCloseBtn.addEventListener("click", closeAdvisorDock);
+  els.advisorForm.addEventListener("submit", handleAdvisorSubmit);
+  document.querySelectorAll("[data-advisor-prompt]").forEach((button) => {
+    button.addEventListener("click", () => askAdvisor(button.dataset.advisorPrompt));
+  });
   els.confirmCancelBtn.addEventListener("click", () => resolveDeleteConfirm(false));
   els.confirmOkBtn.addEventListener("click", () => resolveDeleteConfirm(true));
+  els.floatingAlertCloseBtn.addEventListener("click", dismissFloatingAlert);
   els.floatingAlertOkBtn.addEventListener("click", dismissFloatingAlert);
+  els.floatingAlertList.addEventListener("click", handleAlertDrilldown);
   els.receiptImageInput.addEventListener("change", previewReceiptImage);
   els.authForm.addEventListener("submit", handleAuthSubmit);
   els.signOutBtn.addEventListener("click", signOut);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !els.confirmModal.hidden) resolveDeleteConfirm(false);
     if (event.key === "Escape" && !els.floatingAlertModal.hidden) dismissFloatingAlert();
+    if (event.key === "Escape" && !els.advisorDock.hidden) closeAdvisorDock();
     if (event.key === "Escape") hideMerchantSuggestions();
   });
   document.addEventListener("click", (event) => {
@@ -1905,6 +1934,7 @@ function render() {
   renderHistory();
   renderPendingInbox();
   renderScheduledPayments();
+  renderAdvisorMessages();
   renderMerchantSuggestions();
   checkScheduledNotifications();
 }
@@ -1961,9 +1991,9 @@ function buildAlerts(movements) {
     const spent = Number(byCategory[categoryId] || 0);
     const percent = Math.round((spent / limitValue) * 100);
     if (percent >= 100) {
-      alerts.push({ important: true, tone: "danger", title: `Superaste presupuesto en ${categoryName(categoryId).toLowerCase()}`, text: `Llevas ${money(spent)} de ${money(limitValue)}.` });
+      alerts.push({ important: true, tone: "danger", categoryId, title: `Superaste presupuesto en ${categoryName(categoryId).toLowerCase()}`, text: `Llevas ${money(spent)} de ${money(limitValue)}.` });
     } else if (percent >= 80) {
-      alerts.push({ important: true, tone: "warning", title: `Ya gastaste ${percent}% en ${categoryName(categoryId).toLowerCase()}`, text: `Vas en ${money(spent)} de ${money(limitValue)}.` });
+      alerts.push({ important: true, tone: "warning", categoryId, title: `Ya gastaste ${percent}% en ${categoryName(categoryId).toLowerCase()}`, text: `Vas en ${money(spent)} de ${money(limitValue)}.` });
     }
   });
 
@@ -1990,12 +2020,213 @@ function buildAlerts(movements) {
 function renderAlerts(alerts) {
   els.alertsList.innerHTML = alerts.length
     ? alerts.map((alert) => `
-        <article class="alert-card ${alert.tone}">
+        <article class="alert-card ${alert.tone} ${alert.categoryId ? "clickable-card" : ""}" ${alert.categoryId ? `data-category-id="${escapeAttribute(alert.categoryId)}" role="button" tabindex="0"` : ""}>
           <strong>${escapeHtml(alert.title)}</strong>
           <p>${escapeHtml(alert.text)}</p>
         </article>
       `).join("")
     : `<div class="empty">Todavia no hay alertas que mostrar.</div>`;
+}
+
+function renderAdvisorMessages() {
+  if (!els.advisorMessages) return;
+  els.advisorMessages.innerHTML = advisorMessages.map((message) => `
+    <article class="advisor-message ${message.role}">
+      <p>${escapeHtml(message.text)}</p>
+      ${message.insights?.length ? `
+        <ul>
+          ${message.insights.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+        </ul>
+      ` : ""}
+      ${message.actions?.length ? `
+        <div class="advisor-actions">
+          ${message.actions.map((action) => `
+            <div class="advisor-action">
+              <strong>${escapeHtml(action.label || "Sugerencia")}</strong>
+              <span>${escapeHtml(action.description || "")}${action.amount ? ` · ${money(action.amount)}` : ""}</span>
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
+    </article>
+  `).join("");
+  els.advisorMessages.scrollTop = els.advisorMessages.scrollHeight;
+}
+
+function openAdvisorDock() {
+  els.advisorDock.hidden = false;
+  renderAdvisorMessages();
+  setTimeout(() => els.advisorInput.focus(), 50);
+}
+
+function closeAdvisorDock() {
+  els.advisorDock.hidden = true;
+}
+
+function renderAdvisorChart(chart) {
+  if (!els.advisorChart) return;
+  const items = Array.isArray(chart?.items) ? chart.items.filter((item) => Number(item.value) > 0) : [];
+  if (!items.length) {
+    els.advisorChart.hidden = true;
+    els.advisorChart.innerHTML = "";
+    return;
+  }
+
+  const max = Math.max(...items.map((item) => Number(item.value || 0)), 1);
+  els.advisorChart.hidden = false;
+  els.advisorChart.innerHTML = `
+    <strong>${escapeHtml(chart.title || "Grafico del asesor")}</strong>
+    <div class="advisor-chart-list">
+      ${items.map((item) => {
+        const width = Math.max(6, Math.round((Number(item.value || 0) / max) * 100));
+        const color = item.color || "var(--sage)";
+        return `
+          <div class="advisor-chart-row">
+            <span>${escapeHtml(item.label || "Dato")}</span>
+            <div class="advisor-chart-track"><i style="--width: ${width}%; --color: ${escapeAttribute(color)}"></i></div>
+            <b>${money(item.value)}</b>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+async function handleAdvisorSubmit(event) {
+  event.preventDefault();
+  await askAdvisor(els.advisorInput.value);
+}
+
+async function askAdvisor(question) {
+  const cleanQuestion = String(question || "").trim();
+  if (!cleanQuestion) return;
+
+  advisorMessages.push({ role: "user", text: cleanQuestion, insights: [], actions: [] });
+  els.advisorInput.value = "";
+  renderAdvisorMessages();
+
+  els.advisorSubmitBtn.disabled = true;
+  els.advisorStatus.textContent = "Analizando con IA...";
+
+  try {
+    const response = await fetch("/api/financial-advisor", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(await getAuthHeader()),
+      },
+      body: JSON.stringify({
+        question: cleanQuestion,
+        context: buildAdvisorContext(),
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "No pude consultar al asesor.");
+
+    advisorMessages.push({
+      role: "assistant",
+      text: payload.answer || "Listo, pero no recibi una respuesta clara.",
+      insights: Array.isArray(payload.insights) ? payload.insights : [],
+      actions: Array.isArray(payload.suggestedActions) ? payload.suggestedActions : [],
+    });
+    renderAdvisorChart(payload.chart);
+    els.advisorStatus.textContent = "Respuesta lista";
+  } catch (error) {
+    console.error(error);
+    advisorMessages.push({
+      role: "assistant",
+      text: error.message || "No pude conectar con el asesor. Revisa que GEMINI_API_KEY este configurada.",
+      insights: [],
+      actions: [],
+    });
+    els.advisorStatus.textContent = "No se pudo responder";
+  } finally {
+    renderAdvisorMessages();
+    els.advisorSubmitBtn.disabled = false;
+  }
+}
+
+function buildAdvisorContext() {
+  const activeKey = monthKey(state.activeMonth);
+  const monthMovements = getMonthMovements();
+  const totals = calculateTotals(monthMovements);
+  const expenses = monthMovements.filter((item) => item.type === "expense");
+  const budgets = getBudgetSnapshotForMonth(activeKey);
+  const byCategory = groupExpensesByCategory(expenses);
+  const alerts = buildAlerts(monthMovements);
+  const budgetTotal = Object.values(budgets).reduce((sum, amount) => sum + Number(amount || 0), 0);
+  const available = totals.income - totals.expense - totals.saving;
+
+  return {
+    activeMonthKey: activeKey,
+    activeMonthLabel: state.activeMonth.toLocaleDateString("es-CR", { month: "long", year: "numeric" }),
+    currency: "CRC",
+    totals: {
+      income: roundCurrency(totals.income),
+      expense: roundCurrency(totals.expense),
+      saving: roundCurrency(totals.saving),
+      available: roundCurrency(available),
+      budgetTotal: roundCurrency(budgetTotal),
+    },
+    categories: categories.map((category) => ({
+      id: category.id,
+      name: category.name,
+      kind: category.kind,
+      keywords: category.keywords || [],
+    })),
+    categorySpending: Object.entries(byCategory)
+      .map(([categoryId, amount]) => ({
+        categoryId,
+        name: categoryName(categoryId),
+        spent: roundCurrency(amount),
+        budget: roundCurrency(budgets[categoryId] || 0),
+        remaining: roundCurrency(Number(budgets[categoryId] || 0) - Number(amount || 0)),
+        color: categoryColor(categoryId),
+      }))
+      .sort((a, b) => b.spent - a.spent)
+      .slice(0, 12),
+    savings: state.data.savingsAccounts.map((account) => ({
+      id: account.id,
+      name: account.name,
+      target: roundCurrency(account.target || 0),
+      saved: roundCurrency(getSavedForAccount(account.id)),
+    })),
+    scheduledPayments: (state.data.scheduledPayments || []).slice(0, 20).map((payment) => ({
+      name: payment.name,
+      amount: roundCurrency(payment.amount || 0),
+      category: categoryName(payment.category),
+      nextDate: scheduledDateForMonth(payment, activeKey),
+      repeat: payment.repeat || "once",
+      paidThisMonth: (payment.paidMonths || []).includes(activeKey),
+    })),
+    alerts: alerts.slice(0, 10).map((alert) => ({
+      title: alert.title,
+      text: alert.text,
+      tone: alert.tone,
+    })),
+    recentMovements: [...monthMovements]
+      .sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+      .slice(0, 80)
+      .map((movement) => ({
+        date: movement.date,
+        type: movement.type,
+        amount: roundCurrency(movement.amount),
+        category: categoryName(movement.category),
+        merchant: movement.merchant,
+        note: movement.note || "",
+      })),
+    pendingMovements: (state.data.pendingMovements || []).slice(0, 30).map((movement) => ({
+      date: movement.date,
+      amount: roundCurrency(movement.amount),
+      category: categoryName(movement.category),
+      merchant: movement.merchant,
+      note: movement.note || "",
+    })),
+  };
+}
+
+function roundCurrency(value) {
+  return Math.round(Number(value || 0) * 100) / 100;
 }
 
 function showFloatingAlerts(alerts) {
@@ -2007,7 +2238,7 @@ function showFloatingAlerts(alerts) {
 
   lastFloatingAlertKey = alertKey;
   els.floatingAlertList.innerHTML = importantAlerts.map((alert) => `
-    <article class="alert-card ${alert.tone}">
+    <article class="alert-card ${alert.tone} ${alert.categoryId ? "clickable-card" : ""}" ${alert.categoryId ? `data-category-id="${escapeAttribute(alert.categoryId)}" role="button" tabindex="0"` : ""}>
       <strong>${escapeHtml(alert.title)}</strong>
       <p>${escapeHtml(alert.text)}</p>
     </article>
@@ -2021,6 +2252,13 @@ function dismissFloatingAlert() {
   const alertKey = els.floatingAlertModal.dataset.alertKey || "";
   if (alertKey) sessionStorage.setItem("cuenta-clara-dismissed-alert", alertKey);
   els.floatingAlertModal.hidden = true;
+}
+
+function handleAlertDrilldown(event) {
+  const card = event.target.closest("[data-category-id]");
+  if (!card) return;
+  openHistoryForCategory(card.dataset.categoryId);
+  if (!els.floatingAlertModal.hidden) dismissFloatingAlert();
 }
 
 function renderScheduledPayments() {
@@ -2100,7 +2338,7 @@ function renderCategoryBreakdown(movements) {
     ? rows.map(([category, amount]) => {
         const percent = total ? Math.round((amount / total) * 100) : 0;
         return `
-          <article class="category-row">
+          <article class="category-row clickable-card" data-category-id="${escapeAttribute(category)}" role="button" tabindex="0">
             <header>
               <strong>${categoryName(category)}</strong>
               <strong>${money(amount)}</strong>
@@ -2111,6 +2349,25 @@ function renderCategoryBreakdown(movements) {
         `;
       }).join("")
     : `<div class="empty">Todavia no hay gastos en este mes.</div>`;
+}
+
+function handleCategoryDrilldown(event) {
+  const row = event.target.closest("[data-category-id]");
+  if (!row) return;
+  openHistoryForCategory(row.dataset.categoryId);
+}
+
+function openHistoryForCategory(categoryId) {
+  const firstDay = new Date(state.activeMonth.getFullYear(), state.activeMonth.getMonth(), 1);
+  const lastDay = new Date(state.activeMonth.getFullYear(), state.activeMonth.getMonth() + 1, 0);
+  els.historyTypeFilter.value = "expense";
+  els.historyCategoryFilter.value = categoryId;
+  els.historySearchInput.value = "";
+  els.historyDateFrom.value = toInputDate(firstDay);
+  els.historyDateTo.value = toInputDate(lastDay);
+  renderHistory();
+  switchView("history");
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function renderMonthlyChart(totals) {

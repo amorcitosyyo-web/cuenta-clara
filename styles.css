@@ -779,6 +779,19 @@ select option {
   background: rgba(255, 255, 255, 0.06);
 }
 
+.clickable-card {
+  cursor: pointer;
+  transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+}
+
+.clickable-card:hover,
+.clickable-card:focus-visible {
+  border-color: rgba(218, 241, 222, 0.42);
+  background: rgba(255, 255, 255, 0.085);
+  outline: none;
+  transform: translateY(-1px);
+}
+
 .alert-card p {
   margin: 4px 0 0;
   color: var(--muted);
@@ -828,13 +841,29 @@ select option {
   box-shadow: var(--shadow);
 }
 
+.dialog-heading {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.dialog-heading h2 {
+  margin: 0;
+}
+
 .alert-dialog {
   width: min(100%, 460px);
+  max-height: calc(100vh - 40px);
+  overflow: hidden;
 }
 
 .floating-alert-list {
   display: grid;
   gap: 10px;
+  max-height: min(58vh, 560px);
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .single-action {
@@ -941,6 +970,180 @@ select option {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin-bottom: 12px;
+}
+
+.advisor-fab {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 40;
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgba(216, 255, 85, 0.34);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 20%, rgba(218, 241, 222, 0.55), transparent 34%),
+    linear-gradient(135deg, var(--surface-3), var(--purple));
+  color: var(--ink);
+  font-weight: 950;
+  box-shadow: var(--shadow);
+}
+
+.advisor-fab svg {
+  width: 29px;
+  height: 29px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.advisor-dock {
+  position: fixed;
+  right: 18px;
+  bottom: 88px;
+  z-index: 39;
+  width: min(560px, calc(100vw - 28px));
+  max-height: min(760px, calc(100vh - 108px));
+}
+
+.advisor-panel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.advisor-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+}
+
+.advisor-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.advisor-quick-actions .secondary-button {
+  min-height: 42px;
+  padding-inline: 10px;
+}
+
+.advisor-messages {
+  display: grid;
+  gap: 10px;
+  max-height: min(360px, 40vh);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.advisor-message {
+  width: min(88%, 720px);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.advisor-message.user {
+  justify-self: end;
+  border-color: rgba(216, 255, 85, 0.28);
+  background: rgba(216, 255, 85, 0.09);
+}
+
+.advisor-message.assistant {
+  justify-self: start;
+  border-color: rgba(142, 182, 155, 0.3);
+  background: rgba(11, 43, 38, 0.9);
+}
+
+.advisor-message p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.advisor-message ul {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.advisor-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.advisor-action {
+  display: grid;
+  gap: 3px;
+  border-radius: 14px;
+  padding: 9px 10px;
+  background: rgba(218, 241, 222, 0.08);
+}
+
+.advisor-action span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.advisor-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.advisor-form textarea {
+  resize: vertical;
+  min-height: 54px;
+}
+
+.advisor-chart {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.advisor-chart-list {
+  display: grid;
+  gap: 10px;
+}
+
+.advisor-chart-row {
+  display: grid;
+  grid-template-columns: minmax(94px, 0.9fr) minmax(110px, 1.4fr) minmax(78px, auto);
+  gap: 10px;
+  align-items: center;
+}
+
+.advisor-chart-row span,
+.advisor-chart-row b {
+  font-size: 0.9rem;
+}
+
+.advisor-chart-row b {
+  text-align: right;
+}
+
+.advisor-chart-track {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.advisor-chart-track i {
+  display: block;
+  width: var(--width);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color);
 }
 
 .empty {
@@ -1061,6 +1264,33 @@ select option {
 
   .quick-actions {
     grid-template-columns: 1fr;
+  }
+
+  .advisor-quick-actions,
+  .advisor-form,
+  .advisor-chart-row {
+    grid-template-columns: 1fr;
+  }
+
+  .advisor-dock {
+    left: 10px;
+    right: 10px;
+    bottom: 82px;
+    width: auto;
+    max-height: calc(100vh - 96px);
+  }
+
+  .advisor-panel {
+    border-radius: 20px;
+    padding: 14px;
+  }
+
+  .advisor-message {
+    width: 100%;
+  }
+
+  .advisor-chart-row b {
+    text-align: left;
   }
 
   .filters {
