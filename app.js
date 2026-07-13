@@ -2041,6 +2041,7 @@ function renderAdvisorMessages() {
   els.advisorMessages.innerHTML = advisorMessages.map((message) => `
     <article class="advisor-message ${message.role}">
       <p>${escapeHtml(message.text)}</p>
+      ${message.chart ? renderAdvisorChartMarkup(message.chart) : ""}
       ${message.insights?.length ? `
         <ul>
           ${message.insights.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
@@ -2084,16 +2085,17 @@ function clearAdvisorChat() {
 
 function renderAdvisorChart(chart) {
   if (!els.advisorChart) return;
+  els.advisorChart.hidden = true;
+  els.advisorChart.innerHTML = "";
+}
+
+function renderAdvisorChartMarkup(chart) {
   const items = Array.isArray(chart?.items) ? chart.items.filter((item) => Number(item.value) > 0) : [];
-  if (!items.length) {
-    els.advisorChart.hidden = true;
-    els.advisorChart.innerHTML = "";
-    return;
-  }
+  if (!items.length) return "";
 
   const max = Math.max(...items.map((item) => Number(item.value || 0)), 1);
-  els.advisorChart.hidden = false;
-  els.advisorChart.innerHTML = `
+  return `
+    <div class="advisor-chart inline">
     <strong>${escapeHtml(chart.title || "Grafico del asesor")}</strong>
     <div class="advisor-chart-list">
       ${items.map((item) => {
@@ -2107,6 +2109,7 @@ function renderAdvisorChart(chart) {
           </div>
         `;
       }).join("")}
+    </div>
     </div>
   `;
 }
@@ -2148,8 +2151,8 @@ async function askAdvisor(question) {
       text: payload.answer || "Listo, pero no recibi una respuesta clara.",
       insights: Array.isArray(payload.insights) ? payload.insights : [],
       actions: Array.isArray(payload.suggestedActions) ? payload.suggestedActions : [],
+      chart: payload.chart,
     });
-    renderAdvisorChart(payload.chart);
     els.advisorStatus.textContent = "Respuesta lista";
   } catch (error) {
     console.error(error);
@@ -2167,10 +2170,10 @@ async function askAdvisor(question) {
 }
 
 function buildAdvisorConversation() {
-  return advisorMessages.slice(-12).map((message) => ({
+  return advisorMessages.slice(-8).map((message) => ({
     role: message.role === "user" ? "user" : "assistant",
-    text: String(message.text || "").slice(0, 1200),
-    insights: Array.isArray(message.insights) ? message.insights.slice(0, 3).map(String) : [],
+    text: String(message.text || "").slice(0, 700),
+    insights: Array.isArray(message.insights) ? message.insights.slice(0, 2).map(String) : [],
   }));
 }
 
@@ -2234,7 +2237,7 @@ function buildAdvisorContext() {
     })),
     recentMovements: [...monthMovements]
       .sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
-      .slice(0, 80)
+      .slice(0, 35)
       .map((movement) => ({
         date: movement.date,
         type: movement.type,
@@ -2243,7 +2246,7 @@ function buildAdvisorContext() {
         merchant: movement.merchant,
         note: movement.note || "",
       })),
-    pendingMovements: (state.data.pendingMovements || []).slice(0, 30).map((movement) => ({
+    pendingMovements: (state.data.pendingMovements || []).slice(0, 12).map((movement) => ({
       date: movement.date,
       amount: roundCurrency(movement.amount),
       category: categoryName(movement.category),
