@@ -93,20 +93,23 @@ function buildPrompt(question, context, conversation) {
     "No hagas analisis profundo, graficos ni listas largas si el usuario no lo pide claramente.",
     "Si el usuario pregunta 'me ayudas con presupuesto' o algo parecido, haz 1 o 2 preguntas breves antes de proponer numeros.",
     "Si el usuario pide una accion concreta como resumen, grafico, gastos fuertes o ajuste de presupuesto, entonces si analiza los datos.",
+    "Si CONTEXTO.askRange es true, no analices: pregunta cuales fechas o meses quiere revisar.",
+    "Si CONTEXTO.mode es light, conversa normal y no hagas diagnostico financiero profundo.",
     "Usa SOLO los datos enviados en CONTEXTO. Si falta informacion, dilo.",
+    "El CONTEXTO viene compacto para ahorrar tokens: t={i ingresos,e gastos,s ahorros,a disponible,b presupuesto total}; c= categorias con sp gastado,b presupuesto,rem restante; mv=movimientos con d fecha,t tipo,a monto,c categoria,m comercio,n nota; al=alertas; sav=ahorros; sch=pagos programados.",
     "Usa HISTORIAL_RECIENTE para mantener el hilo de la conversacion y entender referencias como 'eso', 'lo anterior' o 'comparalo'.",
     "Si el historial contradice el CONTEXTO, el CONTEXTO financiero actual gana.",
     "No inventes movimientos, montos, presupuestos ni ingresos.",
     "Puedes recomendar ajustes de presupuesto, ahorro o habitos, pero no digas que ya los cambiaste.",
     "Manten la respuesta breve: maximo 5 lineas salvo que el usuario pida detalle.",
-    "Cuando el usuario pida graficos, devuelve datos simples en chart.items.",
+    "Solo devuelve chart.items si CONTEXTO.chart es true y el usuario pidio un grafico claramente. Si no, chart.items debe ir vacio.",
     "Devuelve SOLO JSON valido, sin markdown.",
     "Formato exacto:",
     "{\"answer\":\"\",\"insights\":[\"\"],\"chart\":{\"title\":\"\",\"type\":\"bar\",\"items\":[{\"label\":\"\",\"value\":0,\"color\":\"\"}]},\"suggestedActions\":[{\"label\":\"\",\"description\":\"\",\"kind\":\"budget_suggestion\",\"categoryId\":\"\",\"amount\":0}]}",
     "Reglas de chart: maximo 8 items; value numerico; color opcional; si no aplica usa items vacio.",
-    `HISTORIAL_RECIENTE: ${JSON.stringify(recentConversation).slice(0, 12000)}`,
+    `HISTORIAL_RECIENTE: ${JSON.stringify(recentConversation).slice(0, 7000)}`,
     `PREGUNTA: ${question}`,
-    `CONTEXTO: ${JSON.stringify(context).slice(0, 24000)}`,
+    `CONTEXTO: ${JSON.stringify(context).slice(0, 12000)}`,
   ].join("\n");
 }
 
@@ -127,6 +130,7 @@ async function callOpenAiAdvisor(apiKey, prompt) {
         { role: "user", content: prompt },
       ],
       temperature: 0.2,
+      max_tokens: 700,
       response_format: { type: "json_object" },
     }),
   });
@@ -151,6 +155,7 @@ async function callGeminiAdvisor(apiKey, prompt) {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.25,
+          maxOutputTokens: 700,
           response_mime_type: "application/json",
         },
       }),

@@ -2122,13 +2122,14 @@ async function handleAdvisorSubmit(event) {
 async function askAdvisor(question) {
   const cleanQuestion = String(question || "").trim();
   if (!cleanQuestion) return;
+  const intent = detectAdvisorIntent(cleanQuestion);
 
   advisorMessages.push({ role: "user", text: cleanQuestion, insights: [], actions: [] });
   els.advisorInput.value = "";
   renderAdvisorMessages();
 
   els.advisorSubmitBtn.disabled = true;
-  els.advisorStatus.textContent = "Analizando con IA...";
+  els.advisorStatus.textContent = intent.mode === "light" ? "Pensando..." : "Revisando datos...";
 
   try {
     const response = await fetch("/api/financial-advisor", {
@@ -2139,7 +2140,7 @@ async function askAdvisor(question) {
       },
       body: JSON.stringify({
         question: cleanQuestion,
-        context: buildAdvisorContext(),
+        context: buildAdvisorContext(intent),
         conversation: buildAdvisorConversation(),
       }),
     });
@@ -2170,16 +2171,32 @@ async function askAdvisor(question) {
 }
 
 function buildAdvisorConversation() {
-  return advisorMessages.slice(-8).map((message) => ({
+  return advisorMessages.slice(-6).map((message) => ({
     role: message.role === "user" ? "user" : "assistant",
-    text: String(message.text || "").slice(0, 700),
-    insights: Array.isArray(message.insights) ? message.insights.slice(0, 2).map(String) : [],
+    text: String(message.text || "").slice(0, 500),
   }));
 }
 
-function buildAdvisorContext() {
+function detectAdvisorIntent(question) {
+  const text = normalizeText(question);
+  const range = detectAdvisorRange(text);
+  const hasAnalysisWords = /\b(analiza|analizar|resumen|revisa|revisar|gasto|gastos|ingreso|ingresos|ahorro|ahorros|presupuesto|presupuestos|categoria|categorias|comparar|comparacion|mejorar|recomienda|recomendacion|acciones|donde|cuanto|cuanta|cuantos|saldo|disponible|mes|semana|periodo|rango)\b/.test(text);
+  const wantsBudget = /\b(presupuesto|presupuestar|limite|limites|gastos fijos|fijos|variable|variables)\b/.test(text);
+  const wantsChart = /\b(grafico|grafica|grafique|chart|barra|barras|pastel|donut|visual)\b/.test(text);
+  const wantsSearch = /\b(busca|buscar|encuentra|encontrar|movimiento|movimientos|factura|facturas|comercio|monto|transaccion|transacciones)\b/.test(text);
+  const wantsDeep = /\b(analiza|analisis|resumen|revisa|comparar|comparacion|gastos fuertes|donde se va|mejorar este mes|que cuidar|acciones concretas)\b/.test(text);
+
+  if (wantsChart) return { mode: "chart", includeMovements: false, allowChart: true, range };
+  if (wantsBudget) return { mode: "budget", includeMovements: false, allowChart: false, range };
+  if (wantsSearch) return { mode: "search", includeMovements: !range.needsClarification, movementLimit: 45, allowChart: false, range };
+  if (wantsDeep || hasAnalysisWords) return { mode: "analysis", includeMovements: !range.needsClarification, movementLimit: 20, allowChart: false, range };
+  return { mode: "light", includeMovements: false, allowChart: false, range };
+}
+
+function buildAdvisorContext(intent = { mode: "light", includeMovements: false, allowChart: false }) {
   const activeKey = monthKey(state.activeMonth);
-  const monthMovements = getMonthMovements();
+  const scopedMovements = getAdvisorScopedMovements(intent.range);
+  const monthMovements = scopedMovements.movements;
   const totals = calculateTotals(monthMovements);
   const expenses = monthMovements.filter((item) => item.type === "expense");
   const budgets = getBudgetSnapshotForMonth(activeKey);
@@ -2187,72 +2204,136 @@ function buildAdvisorContext() {
   const alerts = buildAlerts(monthMovements);
   const budgetTotal = Object.values(budgets).reduce((sum, amount) => sum + Number(amount || 0), 0);
   const available = totals.income - totals.expense - totals.saving;
-
-  return {
-    activeMonthKey: activeKey,
-    activeMonthLabel: state.activeMonth.toLocaleDateString("es-CR", { month: "long", year: "numeric" }),
-    currency: "CRC",
-    totals: {
-      income: roundCurrency(totals.income),
-      expense: roundCurrency(totals.expense),
-      saving: roundCurrency(totals.saving),
-      available: roundCurrency(available),
-      budgetTotal: roundCurrency(budgetTotal),
+  const categorySpending = Object.entries(byCategory)
+    .map(([categoryId, amount]) => ({
+      id: categoryId,
+      n: categoryName(categoryId),
+      sp: roundCurrency(amount),
+      b: roundCurrency(budgets[categoryId] || 0),
+      rem: roundCurrency(Number(budgets[categoryId] || 0) - Number(amount || 0)),
+      color: categoryColor(categoryId),
+    }))
+    .sort((a, b) => b.sp - a.sp);
+  const baseContext = {
+    mode: intent.mode || "light",
+    chart: Boolean(intent.allowChart),
+    askRange: Boolean(intent.range?.needsClarification),
+    range: {
+      label: scopedMovements.label,
+      from: scopedMovements.from,
+      to: scopedMovements.to,
     },
-    categories: categories.map((category) => ({
-      id: category.id,
-      name: category.name,
-      kind: category.kind,
-      keywords: category.keywords || [],
+    m: activeKey,
+    ml: state.activeMonth.toLocaleDateString("es-CR", { month: "long", year: "numeric" }),
+    cur: "CRC",
+    t: {
+      i: roundCurrency(totals.income),
+      e: roundCurrency(totals.expense),
+      s: roundCurrency(totals.saving),
+      a: roundCurrency(available),
+      b: roundCurrency(budgetTotal),
+    },
+    c: categorySpending.slice(0, intent.mode === "light" ? 5 : 12),
+    al: alerts.slice(0, intent.mode === "light" ? 3 : 8).map((alert) => ({
+      t: alert.title,
+      x: alert.text,
+      o: alert.tone,
     })),
-    categorySpending: Object.entries(byCategory)
-      .map(([categoryId, amount]) => ({
-        categoryId,
-        name: categoryName(categoryId),
-        spent: roundCurrency(amount),
-        budget: roundCurrency(budgets[categoryId] || 0),
-        remaining: roundCurrency(Number(budgets[categoryId] || 0) - Number(amount || 0)),
-        color: categoryColor(categoryId),
-      }))
-      .sort((a, b) => b.spent - a.spent)
-      .slice(0, 12),
-    savings: state.data.savingsAccounts.map((account) => ({
+  };
+
+  if (intent.mode === "light") return baseContext;
+
+  const fullContext = {
+    ...baseContext,
+    cats: categories.map((category) => ({
+      id: category.id,
+      n: category.name,
+      k: category.kind,
+    })),
+  };
+
+  if (intent.mode === "budget" || intent.mode === "analysis") {
+    fullContext.sav = state.data.savingsAccounts.map((account) => ({
       id: account.id,
-      name: account.name,
+      n: account.name,
       target: roundCurrency(account.target || 0),
       saved: roundCurrency(getSavedForAccount(account.id)),
-    })),
-    scheduledPayments: (state.data.scheduledPayments || []).slice(0, 20).map((payment) => ({
-      name: payment.name,
-      amount: roundCurrency(payment.amount || 0),
-      category: categoryName(payment.category),
-      nextDate: scheduledDateForMonth(payment, activeKey),
-      repeat: payment.repeat || "once",
-      paidThisMonth: (payment.paidMonths || []).includes(activeKey),
-    })),
-    alerts: alerts.slice(0, 10).map((alert) => ({
-      title: alert.title,
-      text: alert.text,
-      tone: alert.tone,
-    })),
-    recentMovements: [...monthMovements]
-      .sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
-      .slice(0, 35)
-      .map((movement) => ({
-        date: movement.date,
-        type: movement.type,
-        amount: roundCurrency(movement.amount),
-        category: categoryName(movement.category),
-        merchant: movement.merchant,
-        note: movement.note || "",
-      })),
-    pendingMovements: (state.data.pendingMovements || []).slice(0, 12).map((movement) => ({
-      date: movement.date,
-      amount: roundCurrency(movement.amount),
-      category: categoryName(movement.category),
-      merchant: movement.merchant,
-      note: movement.note || "",
-    })),
+    }));
+    fullContext.sch = (state.data.scheduledPayments || []).slice(0, 12).map((payment) => ({
+      n: payment.name,
+      a: roundCurrency(payment.amount || 0),
+      c: categoryName(payment.category),
+      d: scheduledDateForMonth(payment, activeKey),
+      r: payment.repeat || "once",
+      paid: (payment.paidMonths || []).includes(activeKey),
+    }));
+  }
+
+  if (!intent.includeMovements) return fullContext;
+
+  fullContext.mv = [...monthMovements]
+    .sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+    .slice(0, intent.movementLimit || 20)
+    .map((movement) => ({
+      d: movement.date,
+      t: movement.type,
+      a: roundCurrency(movement.amount),
+      c: categoryName(movement.category),
+      m: movement.merchant,
+      n: movement.note || "",
+    }));
+
+  if (intent.mode === "search") {
+    fullContext.pend = (state.data.pendingMovements || []).slice(0, 12).map((movement) => ({
+      d: movement.date,
+      a: roundCurrency(movement.amount),
+      c: categoryName(movement.category),
+      m: movement.merchant,
+      n: movement.note || "",
+    }));
+  }
+
+  return fullContext;
+}
+
+function detectAdvisorRange(text) {
+  const now = new Date();
+  const activeStart = new Date(state.activeMonth);
+  const activeEnd = new Date(state.activeMonth.getFullYear(), state.activeMonth.getMonth() + 1, 0);
+  const daysMatch = text.match(/\b(?:ultimos|ultimas|pasados|pasadas)\s+(\d{1,3})\s+dias?\b/);
+  if (daysMatch) {
+    const days = Math.max(1, Math.min(120, Number(daysMatch[1])));
+    const from = new Date(now);
+    from.setDate(from.getDate() - days + 1);
+    return { from: toInputDate(from), to: toInputDate(now), label: `ultimos ${days} dias` };
+  }
+
+  const monthsMatch = text.match(/\b(?:ultimos|ultimas|pasados|pasadas)\s+(\d{1,2})\s+mes(?:es)?\b/);
+  if (monthsMatch) {
+    const months = Math.max(1, Math.min(12, Number(monthsMatch[1])));
+    const from = new Date(now.getFullYear(), now.getMonth() - months + 1, 1);
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { from: toInputDate(from), to: toInputDate(to), label: `ultimos ${months} meses` };
+  }
+
+  const vagueCount = text.match(/\b(\d{1,2}|un|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)\s+(mes(?:es)?|dias?)\b/);
+  if (vagueCount && !/\b(este|actual|hoy|ayer|ultimos|ultimas|pasados|pasadas)\b/.test(text)) {
+    return { needsClarification: true, label: `rango pendiente: ${vagueCount[0]}` };
+  }
+
+  return { from: toInputDate(activeStart), to: toInputDate(activeEnd), label: state.activeMonth.toLocaleDateString("es-CR", { month: "long", year: "numeric" }) };
+}
+
+function getAdvisorScopedMovements(range = {}) {
+  const from = range.from || toInputDate(state.activeMonth);
+  const fallbackEnd = new Date(state.activeMonth.getFullYear(), state.activeMonth.getMonth() + 1, 0);
+  const to = range.to || toInputDate(fallbackEnd);
+  if (range.needsClarification) return { movements: [], from: "", to: "", label: range.label || "rango pendiente" };
+  return {
+    movements: state.data.movements.filter((movement) => movement.date >= from && movement.date <= to),
+    from,
+    to,
+    label: range.label || `${from} a ${to}`,
   };
 }
 
@@ -3185,6 +3266,15 @@ function toTitleCase(text) {
     .filter(Boolean)
     .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
     .join(" ");
+}
+
+function normalizeText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function escapeHtml(value) {
