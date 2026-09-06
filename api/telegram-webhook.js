@@ -13,11 +13,25 @@ module.exports = async function handler(req, res) {
   try {
     const update = req.body && typeof req.body === "object" ? req.body : await readJsonBody(req);
     const query = update.callback_query;
-    if (!query || !isAllowed(query)) {
+    const message = update.message;
+    if (query) {
+      if (!isAllowed(query)) {
+        res.status(200).json({ ok: true });
+        return;
+      }
+      await handleCallback(query);
       res.status(200).json({ ok: true });
       return;
     }
-    await handleCallback(query);
+    if (message) {
+      if (!isAllowedMessage(message)) {
+        res.status(200).json({ ok: true });
+        return;
+      }
+      await handleMessage(message);
+      res.status(200).json({ ok: true });
+      return;
+    }
     res.status(200).json({ ok: true });
   } catch (error) {
     console.error(error);
@@ -36,6 +50,25 @@ function isAllowed(query) {
   const allowedUsers = String(process.env.TELEGRAM_ALLOWED_USER_IDS || "").split(",").map((value) => value.trim());
   return allowedChats.includes(String(query.message?.chat?.id || ""))
     && allowedUsers.includes(String(query.from?.id || ""));
+}
+
+function isAllowedMessage(message) {
+  const allowedChats = String(process.env.TELEGRAM_CHAT_ID || "").split(",").map((value) => value.trim());
+  const allowedUsers = String(process.env.TELEGRAM_ALLOWED_USER_IDS || "").split(",").map((value) => value.trim());
+  return allowedChats.includes(String(message.chat?.id || ""))
+    && allowedUsers.includes(String(message.from?.id || ""));
+}
+
+async function handleMessage(message) {
+  const text = String(message.text || "").trim();
+  if (!text) return;
+
+  if (text === "/start" || text === "/start@CuentaClaraBot") {
+    await sendMessage(message.chat.id, "Cuenta Clara conectada. Ya puedo recibir avisos y ayudarte con los movimientos.");
+    return;
+  }
+
+  await sendMessage(message.chat.id, "Recibi tu mensaje. El bot ya esta conectado; pronto podras consultar y gestionar los gastos desde aqui.");
 }
 
 async function handleCallback(query) {
@@ -110,4 +143,8 @@ function editMessage(chatId, messageId, text, keyboard) {
     text,
     reply_markup: keyboard.length ? { inline_keyboard: keyboard } : { inline_keyboard: [] },
   });
+}
+
+function sendMessage(chatId, text) {
+  return telegram("sendMessage", { chat_id: chatId, text });
 }
