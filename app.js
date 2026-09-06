@@ -185,6 +185,7 @@ async function init() {
   bindEvents();
   const remoteReady = await setupRemoteSync();
   if (remoteReady === "locked") return;
+  hydrateAdvisorMessages();
   populateSelects();
   setToday();
   saveData();
@@ -380,6 +381,7 @@ async function handleAuthSubmit(event) {
   remote.user = result.data.session.user;
   await loadRemoteData();
   remote.ready = true;
+  hydrateAdvisorMessages();
   categories = mergeCategories(state.data.customCategories);
   populateSelects();
   setToday();
@@ -589,6 +591,17 @@ function normalizeData(data) {
     merchantRules: Array.isArray(data.merchantRules) ? data.merchantRules : [],
     scheduledPayments: Array.isArray(data.scheduledPayments) ? data.scheduledPayments : [],
     savingsAccounts: Array.isArray(data.savingsAccounts) ? data.savingsAccounts : [],
+    agentMemory: {
+      goals: [],
+      notes: [],
+      recentEvents: [],
+      chatHistory: [],
+      ...(data.agentMemory || {}),
+      goals: Array.isArray(data.agentMemory?.goals) ? data.agentMemory.goals : [],
+      notes: Array.isArray(data.agentMemory?.notes) ? data.agentMemory.notes : [],
+      recentEvents: Array.isArray(data.agentMemory?.recentEvents) ? data.agentMemory.recentEvents : [],
+      chatHistory: Array.isArray(data.agentMemory?.chatHistory) ? data.agentMemory.chatHistory : [],
+    },
     meta: {
       updatedAt: data.meta?.updatedAt || new Date(0).toISOString(),
     },
@@ -2062,6 +2075,35 @@ function renderAdvisorMessages() {
   els.advisorMessages.scrollTop = els.advisorMessages.scrollHeight;
 }
 
+function hydrateAdvisorMessages() {
+  const saved = Array.isArray(state.data.agentMemory?.chatHistory)
+    ? state.data.agentMemory.chatHistory
+    : [];
+  const valid = saved
+    .filter((message) => message && ["user", "assistant"].includes(message.role) && message.text)
+    .slice(-12)
+    .map((message) => ({
+      role: message.role,
+      text: String(message.text).slice(0, 1400),
+      insights: Array.isArray(message.insights) ? message.insights.slice(0, 6) : [],
+      actions: Array.isArray(message.actions) ? message.actions.slice(0, 4) : [],
+      chart: message.chart || null,
+    }));
+  advisorMessages.splice(0, advisorMessages.length, ...(valid.length ? valid : [{ ...initialAdvisorMessage }]));
+}
+
+function persistAdvisorConversation() {
+  state.data.agentMemory = state.data.agentMemory || {};
+  state.data.agentMemory.chatHistory = advisorMessages.slice(-12).map((message) => ({
+    role: message.role,
+    text: String(message.text || "").slice(0, 1400),
+    insights: Array.isArray(message.insights) ? message.insights.slice(0, 6) : [],
+    actions: Array.isArray(message.actions) ? message.actions.slice(0, 4) : [],
+    chart: message.chart || null,
+  }));
+  saveData();
+}
+
 function openAdvisorDock() {
   els.advisorDock.hidden = false;
   document.body.classList.add("advisor-open");
@@ -2076,6 +2118,7 @@ function closeAdvisorDock() {
 
 function clearAdvisorChat() {
   advisorMessages.splice(0, advisorMessages.length, { ...initialAdvisorMessage });
+  persistAdvisorConversation();
   els.advisorInput.value = "";
   els.advisorStatus.textContent = "Pregunta sobre gastos, presupuesto y ahorro";
   renderAdvisorChart(null);
@@ -2125,6 +2168,7 @@ async function askAdvisor(question) {
   const intent = detectAdvisorIntent(cleanQuestion);
 
   advisorMessages.push({ role: "user", text: cleanQuestion, insights: [], actions: [] });
+  persistAdvisorConversation();
   els.advisorInput.value = "";
   renderAdvisorMessages();
 
@@ -2165,6 +2209,7 @@ async function askAdvisor(question) {
     });
     els.advisorStatus.textContent = "No se pudo responder";
   } finally {
+    persistAdvisorConversation();
     renderAdvisorMessages();
     els.advisorSubmitBtn.disabled = false;
   }
@@ -2867,6 +2912,10 @@ function normalizePendingMovements(payload) {
       const date = normalizePendingDate(item.date || item.fecha || item.created_at) || toInputDate(new Date());
       const sourceId = String(item.sourceId || item.source_id || item.gmailMessageId || item.messageId || item.id || `${merchant}-${amount}-${date}`).trim();
       const textForCategory = `${merchant} ${item.note || item.nota || ""}`;
+      const requestedType = String(item.type || item.transactionType || "").toLowerCase();
+      const category = normalizeCategory(item.category || item.categoria || detectCategory(textForCategory));
+      const categoryKind = categories.find((entry) => entry.id === category)?.kind;
+      const type = ["income", "ingreso"].includes(requestedType) || categoryKind === "income" ? "income" : "expense";
       return {
         id: createId(),
         source: item.source || "email",
@@ -2874,7 +2923,8 @@ function normalizePendingMovements(payload) {
         date,
         merchant,
         amount,
-        category: normalizeCategory(item.category || item.categoria || detectCategory(textForCategory)),
+        type,
+        category: categoryKind === type ? category : (getMovementCategories(type)[0]?.id || category),
         note: String(item.note || item.nota || item.description || "").trim(),
         createdAt: new Date().toISOString(),
       };
@@ -2945,10 +2995,10 @@ function renderPendingRow(item) {
       <div class="pending-summary">
         <div class="pending-copy">
           <strong>${escapeHtml(item.merchant || "Movimiento pendiente")}</strong>
-          <p>${displayDate(item.date)} · Gasto · ${categoryName(item.category)}${item.note ? ` · ${escapeHtml(item.note)}` : ""}</p>
+          <p>${displayDate(item.date)} · ${movementTypeLabel(item.type)} · ${categoryName(item.category)}${item.note ? ` · ${escapeHtml(item.note)}` : ""}</p>
         </div>
         <div class="pending-side">
-          <strong class="expense">-${money(Math.abs(item.amount || 0))}</strong>
+          <strong class="${item.type === "income" ? "income" : "expense"}">${item.type === "income" ? "+" : "-"}${money(Math.abs(item.amount || 0))}</strong>
           <div class="row-actions">
             <button class="mini-button icon-button-small success" data-action="accept-pending" data-id="${item.id}" aria-label="Aceptar pendiente" title="Aceptar">✓</button>
             <button class="mini-button icon-button-small" data-action="edit-pending" data-id="${item.id}" aria-label="Editar pendiente" title="Editar">✏️</button>
@@ -2972,7 +3022,7 @@ function renderPendingRow(item) {
           </label>
           <label class="field">
             <span>Categoria</span>
-            <select data-pending-field="category">${expenseCategoryOptions(item.category)}</select>
+            <select data-pending-field="category">${pendingCategoryOptions(item.category, item.type)}</select>
           </label>
         </div>
         <label class="field">
@@ -2988,9 +3038,9 @@ function renderPendingRow(item) {
   `;
 }
 
-function expenseCategoryOptions(selected) {
+function pendingCategoryOptions(selected, type = "expense") {
   return categories
-    .filter((category) => category.kind === "expense")
+    .filter((category) => category.kind === type)
     .map((category) => `<option value="${category.id}" ${category.id === selected ? "selected" : ""}>${category.name}</option>`)
     .join("");
 }
@@ -3032,11 +3082,13 @@ function updatePendingFromRow(id) {
 function acceptPendingMovement(id) {
   const item = updatePendingFromRow(id);
   if (!item || !item.amount || !item.date) return;
-  const movement = makeMovement("expense", item.amount, item.date, item.category, item.merchant, item.note);
+  const movement = makeMovement(item.type || "expense", item.amount, item.date, item.category, item.merchant, item.note);
   movement.source = item.source;
   movement.sourceId = item.sourceId;
+  movement.classification = item.classification || { status: "approved", confidence: 1, source: "manual" };
   state.data.movements.unshift(movement);
   state.data.pendingMovements = state.data.pendingMovements.filter((pending) => pending.id !== id);
+  learnMerchantCategory(item.merchant, item.category);
   saveData();
   render();
   switchView("inbox");

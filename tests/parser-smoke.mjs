@@ -30,7 +30,10 @@ const context = {
   },
   Number,
   String,
+  location: { protocol: "file:" },
   document: {
+    addEventListener() {},
+    body: { classList: { add() {}, remove() {} } },
     createElement() {
       return { getContext: () => ({ drawImage() {} }) };
     },
