@@ -66,11 +66,18 @@ function normalizeState(data) {
       notes: [],
       recentEvents: [],
       chatHistory: [],
+      telegramSessions: {},
       ...state.agentMemory,
       goals: Array.isArray(state.agentMemory?.goals) ? state.agentMemory.goals : [],
       notes: Array.isArray(state.agentMemory?.notes) ? state.agentMemory.notes : [],
       recentEvents: Array.isArray(state.agentMemory?.recentEvents) ? state.agentMemory.recentEvents : [],
       chatHistory: Array.isArray(state.agentMemory?.chatHistory) ? state.agentMemory.chatHistory : [],
+      telegramSessions:
+        state.agentMemory?.telegramSessions &&
+        typeof state.agentMemory.telegramSessions === "object" &&
+        !Array.isArray(state.agentMemory.telegramSessions)
+          ? state.agentMemory.telegramSessions
+          : {},
     },
     meta: { ...(state.meta || {}), updatedAt: new Date().toISOString() },
   };

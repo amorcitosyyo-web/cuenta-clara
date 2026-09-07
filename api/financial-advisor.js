@@ -79,9 +79,9 @@ async function readJsonBody(req) {
 
 function buildPrompt(question, context, conversation) {
   const recentConversation = Array.isArray(conversation)
-    ? conversation.slice(-12).map((message) => ({
+    ? conversation.slice(-4).map((message) => ({
         role: message.role === "user" ? "user" : "assistant",
-        text: String(message.text || "").slice(0, 1200),
+        text: String(message.text || "").slice(0, 350),
         insights: Array.isArray(message.insights) ? message.insights.slice(0, 3).map(String) : [],
       }))
     : [];
@@ -107,9 +107,9 @@ function buildPrompt(question, context, conversation) {
     "Formato exacto:",
     "{\"answer\":\"\",\"insights\":[\"\"],\"chart\":{\"title\":\"\",\"type\":\"bar\",\"items\":[{\"label\":\"\",\"value\":0,\"color\":\"\"}]},\"suggestedActions\":[{\"label\":\"\",\"description\":\"\",\"kind\":\"budget_suggestion\",\"categoryId\":\"\",\"amount\":0}]}",
     "Reglas de chart: maximo 8 items; value numerico; color opcional; si no aplica usa items vacio.",
-    `HISTORIAL_RECIENTE: ${JSON.stringify(recentConversation).slice(0, 7000)}`,
+    `HISTORIAL_RECIENTE: ${JSON.stringify(recentConversation).slice(0, 2200)}`,
     `PREGUNTA: ${question}`,
-    `CONTEXTO: ${JSON.stringify(context).slice(0, 12000)}`,
+    `CONTEXTO: ${JSON.stringify(context).slice(0, 5500)}`,
   ].join("\n");
 }
 
@@ -130,7 +130,7 @@ async function callOpenAiAdvisor(apiKey, prompt) {
         { role: "user", content: prompt },
       ],
       temperature: 0.2,
-      max_tokens: 700,
+      max_tokens: 360,
       response_format: { type: "json_object" },
     }),
   });
@@ -155,7 +155,7 @@ async function callGeminiAdvisor(apiKey, prompt) {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.25,
-          maxOutputTokens: 700,
+          maxOutputTokens: 360,
           response_mime_type: "application/json",
         },
       }),

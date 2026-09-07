@@ -2072,7 +2072,9 @@ function renderAdvisorMessages() {
       ` : ""}
     </article>
   `).join("");
-  els.advisorMessages.scrollTop = els.advisorMessages.scrollHeight;
+  requestAnimationFrame(() => {
+    els.advisorMessages.scrollTop = els.advisorMessages.scrollHeight;
+  });
 }
 
 function hydrateAdvisorMessages() {
