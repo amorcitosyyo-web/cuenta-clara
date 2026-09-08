@@ -25,6 +25,10 @@ module.exports = async function handler(req, res) {
     }
   } catch (error) {
     console.error("Telegram webhook error:", error);
+    const message = update?.message;
+    if (message && isAllowedMessage(message)) {
+      await sendMessage(message.chat.id, "⚠️ Recibí tu mensaje, pero tuve un problema interno al procesarlo. Revisa la configuración de Supabase/OpenAI en Vercel y vuelve a intentarlo.").catch(() => {});
+    }
   }
   res.status(200).json({ ok: true });
 };
