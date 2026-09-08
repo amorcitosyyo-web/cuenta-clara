@@ -59,18 +59,34 @@ function normalizeState(data) {
     ...state,
     movements: Array.isArray(state.movements) ? state.movements : [],
     pendingMovements: Array.isArray(state.pendingMovements) ? state.pendingMovements : [],
+    budgetHistory: Array.isArray(state.budgetHistory) ? state.budgetHistory : [],
+    budgets: state.budgets && typeof state.budgets === "object" ? state.budgets : {},
+    savingsAccounts: Array.isArray(state.savingsAccounts) ? state.savingsAccounts : [],
+    scheduledPayments: Array.isArray(state.scheduledPayments) ? state.scheduledPayments : [],
     customCategories: Array.isArray(state.customCategories) ? state.customCategories : [],
     merchantRules: Array.isArray(state.merchantRules) ? state.merchantRules : [],
     agentMemory: {
       goals: [],
       notes: [],
       recentEvents: [],
+      intentAliases: [],
+      pendingIntents: {},
+      pendingActions: {},
       chatHistory: [],
       telegramSessions: {},
       ...state.agentMemory,
       goals: Array.isArray(state.agentMemory?.goals) ? state.agentMemory.goals : [],
       notes: Array.isArray(state.agentMemory?.notes) ? state.agentMemory.notes : [],
       recentEvents: Array.isArray(state.agentMemory?.recentEvents) ? state.agentMemory.recentEvents : [],
+      intentAliases: Array.isArray(state.agentMemory?.intentAliases) ? state.agentMemory.intentAliases : [],
+      pendingIntents:
+        state.agentMemory?.pendingIntents && typeof state.agentMemory.pendingIntents === "object" && !Array.isArray(state.agentMemory.pendingIntents)
+          ? state.agentMemory.pendingIntents
+          : {},
+      pendingActions:
+        state.agentMemory?.pendingActions && typeof state.agentMemory.pendingActions === "object" && !Array.isArray(state.agentMemory.pendingActions)
+          ? state.agentMemory.pendingActions
+          : {},
       chatHistory: Array.isArray(state.agentMemory?.chatHistory) ? state.agentMemory.chatHistory : [],
       telegramSessions:
         state.agentMemory?.telegramSessions &&

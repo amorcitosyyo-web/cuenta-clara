@@ -45,9 +45,10 @@ https://cuenta-clara-rosy.vercel.app/
 | `app.js` | Logica del navegador: movimientos, vistas, filtros, CSV, presupuestos, facturas y chat flotante. |
 | `api/financial-advisor.js` | Backend del asesor dentro de la app; usa OpenAI sin exponer la clave. |
 | `api/telegram-webhook.js` | Recibe mensajes, audios y botones de Telegram y responde como el agente. |
-| `api/agent-inbox.js` | Recibe movimientos de Make/correo, los clasifica y los manda a gastos, ingresos o Bandeja. |
+| `api/agent-inbox.js` | Recibe movimientos de Make/correo, los clasifica, los registra automaticamente y manda el resultado a Telegram con opcion de corregir la categoria. |
 | `api/_agent.js` | Funciones compartidas del agente: datos de Supabase, clasificacion, memoria, reglas y mensajes de Telegram. |
-| `api/sync-email.js` | Punto de conexion de la app con Make para pedir lectura de correo. |
+| `api/app-knowledge.js` | Manual operativo compartido por el asesor web y Telegram: secciones, flujos de uso, conceptos y limites del agente. |
+| `api/sync-email.js` | Punto de conexion de la app con Make para pedir lectura de correo y enviar los resultados al clasificador del agente. |
 | `api/analyze-receipt.js` | Analiza facturas desde la app. |
 | `api/supabase-config.js` | Entrega la configuracion publica de Supabase al navegador. |
 | `database/schema.sql` | Esquema general de Supabase. |
@@ -69,7 +70,7 @@ La app incluye resumen mensual, selector de mes, historial por fechas, filtros, 
 
 ### Carga de datos
 
-La app permite importar datos mediante la plantilla CSV. Los nuevos movimientos pueden pasar por una Bandeja para revisarlos antes de aceptarlos. La Bandeja no forma parte del calculo hasta que se confirma el movimiento.
+La app permite importar datos mediante la plantilla CSV. Las importaciones manuales pueden pasar por una Bandeja para revisarlas antes de aceptarlas. Los movimientos procesados por el agente desde correo se registran automaticamente.
 
 ### Facturas
 
@@ -88,6 +89,7 @@ Comportamiento actual:
 - Solo envia al modelo los datos relevantes para la pregunta y periodo, no todos los movimientos historicos.
 - La app genera sus propios graficos normales; la IA no debe generar un grafico salvo que se pida algo especifico.
 - No debe cambiar presupuestos, gastos, categorias o ahorros sin confirmacion explicita.
+- Recibe el manual operativo de la app desde `api/app-knowledge.js` para poder explicar como usar Inicio, Agregar, Factura, Bandeja, Presupuesto, Ahorros, Gastos programados, Historial y el propio asesor. Ese manual no le permite afirmar que ejecuto una accion que el endpoint no puede ejecutar.
 
 La memoria del agente tiene dos niveles:
 
@@ -100,9 +102,9 @@ Cuando llega un movimiento desde correo/Make al endpoint `api/agent-inbox.js`:
 
 1. Se descartan duplicados mediante `sourceId`.
 2. Se intenta reconocer una regla aprendida o palabras clave conocidas.
-3. Si la confianza es de 90% o mas, entra automaticamente a Gasto o Ingreso.
-4. Si hay duda, queda en Bandeja.
-5. Al corregir una categoria desde Telegram, el agente guarda un patron para reutilizarlo en futuros movimientos parecidos.
+3. El agente registra automaticamente el movimiento con la categoria elegida, incluso si la confianza es baja.
+4. Telegram muestra comercio, monto, fecha, categoria y nivel de confianza.
+5. Si la categoria esta mal, una persona toca **Cambiar categoria**; el movimiento se corrige y el agente aprende el patron para futuros movimientos parecidos.
 
 El agente no debe crear categorias por su cuenta. Puede sugerir una nueva, pero requiere aprobacion humana.
 
@@ -128,7 +130,7 @@ El bot ya puede:
 - Responder conversaciones de texto que le lleguen.
 - Recibir notas de voz y transcribirlas con OpenAI antes de responder.
 - Mantener contexto corto de la conversacion del grupo.
-- Usar botones de Telegram para confirmar o cambiar categorias de movimientos pendientes.
+- Usar botones de Telegram para cambiar la categoria cuando sea necesario; no exige confirmar cada movimiento correcto.
 - Restringir el control a ese grupo y a los dos usuarios autorizados.
 
 ### Importante: mensajes normales en grupos
@@ -198,8 +200,8 @@ El comportamiento objetivo acordado es:
 - Movimiento clasificado con confianza alta: se agrega directo a Gasto o Ingreso y se avisa al grupo con comercio, monto y categoria.
 - Ese aviso debe incluir el boton **Cambiar categoria**.
 - Si nadie presiona el boton, la categoria queda como esta.
-- Movimiento dudoso: queda en Bandeja y Telegram pregunta la categoria con botones.
-- Cuando una persona confirma desde Telegram, el movimiento sale de Bandeja, se registra con la categoria elegida y el patron se aprende.
+- Todo movimiento se registra con la mejor categoria disponible y Telegram informa si la confianza es alta o si conviene revisarlo.
+- Si una persona toca **Cambiar categoria**, el movimiento se corrige y el patron se aprende.
 - Tambien debe avisar cuando se acerca o supera un presupuesto, y mandar resumentes semanales y mensuales cuando se configure la automatizacion.
 
 ## 10. Variables de entorno de Vercel

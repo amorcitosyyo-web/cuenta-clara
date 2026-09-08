@@ -1,4 +1,7 @@
 const { getAppState, getCategories, learnRule, saveAppState } = require("./_agent");
+const { APP_KNOWLEDGE } = require("./app-knowledge");
+const { runEmailAgentSync } = require("./email-agent-sync");
+const { executeAction } = require("./action-tools");
 
 const MONTHS = {
   enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
@@ -18,7 +21,7 @@ module.exports = async function handler(req, res) {
     if (update.callback_query) {
       if (isAllowed(update.callback_query)) await handleCallback(update.callback_query);
     } else if (update.message && isAllowedMessage(update.message)) {
-      await handleMessage(update.message);
+      await handleMessage(update.message, req);
     }
   } catch (error) {
     console.error("Telegram webhook error:", error);
@@ -46,7 +49,7 @@ function isAllowedMessage(message) {
     values("TELEGRAM_ALLOWED_USER_IDS").includes(String(message.from && message.from.id || ""));
 }
 
-async function handleMessage(message) {
+async function handleMessage(message, request = null) {
   const chatId = message.chat.id;
   if (message.voice || message.audio) {
     await sendChatAction(chatId, "typing");
@@ -55,7 +58,7 @@ async function handleMessage(message) {
       return sendMessage(chatId, "No pude entender ese audio. Puedes reenviarlo o escribirme el mensaje.");
     }
     await sendMessage(chatId, "Entendi: " + transcript);
-    return replyAsAgent(message, transcript);
+    return replyAsAgent(message, transcript, request);
   }
 
   const text = String(message.text || "").trim();
@@ -74,6 +77,8 @@ async function handleMessage(message) {
   if (/^\/limpiar(?:@\w+)?$/i.test(text)) {
     const state = await getState();
     delete state.agentMemory.telegramSessions[String(chatId)];
+    delete state.agentMemory.pendingIntents[String(chatId)];
+    delete state.agentMemory.pendingActions[String(chatId)];
     await saveState(state);
     return sendMessage(chatId, "Listo. Limpie el contexto de esta conversacion, sin borrar ningun gasto ni dato financiero.");
   }
@@ -91,21 +96,96 @@ async function handleMessage(message) {
     await saveState(state);
     return sendMessage(chatId, "Meta guardada: " + goal);
   }
-  return replyAsAgent(message, text);
+  return replyAsAgent(message, text, request);
 }
 
-async function replyAsAgent(message, text) {
+async function replyAsAgent(message, text, request = null) {
   const chatId = message.chat.id;
   const state = await getState();
   const question = String(text || "").trim();
+
+  const sessionKey = String(chatId);
+  const sessions = state.agentMemory.telegramSessions;
+  const pendingIntents = state.agentMemory.pendingIntents || {};
+  const pendingIntentPhrase = pendingIntents[sessionKey] || "";
+
+  const pendingAction = state.agentMemory.pendingActions?.[sessionKey];
+  if (pendingAction && /^(si|sí|confirmo|confirmar|hazlo|dale|ok|okay|acepto)$/i.test(normalize(question))) {
+    return executePendingAction(message, state, pendingAction);
+  }
+  if (pendingAction && /^(no|cancelar|cancela|detener|déjalo|dejalo)$/i.test(normalize(question))) {
+    delete state.agentMemory.pendingActions[sessionKey];
+    await saveState(state);
+    return sendMessage(chatId, "Listo, no hice ningún cambio.");
+  }
+
+  const deleteRequest = findDeleteRequest(question, state);
+  if (deleteRequest.status === "ready") {
+    const actionId = makeActionId();
+    state.agentMemory.pendingActions[sessionKey] = {
+      id: actionId,
+      type: "delete_movement",
+      movementId: deleteRequest.movement.id,
+      createdAt: new Date().toISOString(),
+    };
+    await saveState(state);
+    return sendMessage(chatId,
+      [
+        "⚠️ Antes de hacer ese cambio necesito tu autorización.",
+        "",
+        `Voy a eliminar este movimiento del historial:`,
+        `🛒 ${deleteRequest.movement.merchant}`,
+        `💰 CRC ${Number(deleteRequest.movement.amount || 0).toFixed(2)} · 📅 ${deleteRequest.movement.date}`,
+        "",
+        "Esto afectará los totales del mes y no se puede deshacer desde Telegram.",
+        "¿Quieres que lo elimine?",
+      ].join("\n"),
+      [[
+        { text: "✅ Sí, eliminar", callback_data: `act:confirm:${actionId}` },
+        { text: "❌ Cancelar", callback_data: `act:cancel:${actionId}` },
+      ]]);
+  }
+  if (deleteRequest.status === "ambiguous") {
+    return sendMessage(chatId, deleteRequest.message);
+  }
+  const emailIntent = detectEmailIntent(question, state);
+  if (emailIntent.matched) {
+    if (pendingIntentPhrase) {
+      state.agentMemory.intentAliases = uniqueAliases([
+        ...(state.agentMemory.intentAliases || []),
+        { phrase: pendingIntentPhrase, action: "read_email" },
+      ], 80);
+      delete pendingIntents[sessionKey];
+    }
+    try {
+      await sendChatAction(chatId, "typing");
+      const result = await runEmailAgentSync({
+        existingSourceIds: [...state.movements, ...state.pendingMovements].map((item) => item.sourceId).filter(Boolean),
+        userId: process.env.AGENT_OWNER_USER_ID,
+        baseUrl: getBaseUrl(request),
+      });
+      await saveState(state);
+      return sendMessage(chatId, result.processed
+        ? `Listo 💌. El agente revisó el correo y procesó ${result.processed} movimiento${result.processed === 1 ? "" : "s"}. Les envié el resumen con las categorías.`
+        : "Listo 💌. Revisé el correo y no encontré movimientos nuevos.");
+    } catch (error) {
+      return sendMessage(chatId, `No pude leer el correo todavía: ${error.message}`);
+    }
+  }
+
+  if (looksLikeActionRequest(question) && !emailIntent.matched) {
+    pendingIntents[sessionKey] = question;
+    state.agentMemory.pendingIntents = pendingIntents;
+    await saveState(state);
+    return sendMessage(chatId, "Quiero ayudarte, pero necesito precisar la acción. ¿Te refieres a leer el correo y revisar las transferencias, revisar la Bandeja o hacer otra cosa?");
+  }
+
   const requiredPeriod = needsPeriod(question);
   const period = parsePeriod(question);
   if (requiredPeriod && !period) {
     return sendMessage(chatId, "Claro. Para revisarlo bien, dime el periodo: por ejemplo “julio 2026”, “los ultimos 5 dias” o un rango de fechas.");
   }
 
-  const sessionKey = String(chatId);
-  const sessions = state.agentMemory.telegramSessions;
   const history = Array.isArray(sessions[sessionKey]) ? sessions[sessionKey] : [];
   await sendChatAction(chatId, "typing");
   const answer = await askAdvisor(question, state, period, history);
@@ -116,6 +196,36 @@ async function replyAsAgent(message, text) {
   ], 8);
   await saveState(state);
   return sendMessage(chatId, answer);
+}
+
+function detectEmailIntent(question, state) {
+  const normalized = normalize(question);
+  const aliases = Array.isArray(state.agentMemory?.intentAliases) ? state.agentMemory.intentAliases : [];
+  const learned = aliases.some((alias) => alias?.action === "read_email" && normalized.includes(normalize(alias.phrase)));
+  const direct = /(lee|leer|revisa|revisar|revis[aá]|busca|buscar|trae|traer|actualiza|actualizar|sincroniza|sincronizar).{0,35}(correo|email|bandeja|transferencia|movimiento|banco)/.test(normalized)
+    || /(correo|email|bandeja|transferencia|movimiento).{0,35}(nuevo|nuevos|pendiente|pendientes|banco)/.test(normalized);
+  return { matched: learned || direct };
+}
+
+function looksLikeActionRequest(question) {
+  return /\b(haz|hacer|ve|revisa|revisar|lee|leer|busca|buscar|actualiza|actualizar|sincroniza|sincronizar|arregla|arreglar|trae|traer)\b/i.test(normalize(question));
+}
+
+function uniqueAliases(items, limit) {
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = `${item?.action || ""}:${normalize(item?.phrase || "")}`;
+    if (!item?.phrase || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(-limit);
+}
+
+function getBaseUrl(request) {
+  const host = request?.headers?.host || process.env.VERCEL_URL;
+  if (!host) return "";
+  const protocol = String(request?.headers?.["x-forwarded-proto"] || "https").split(",")[0];
+  return `${protocol}://${host}`;
 }
 
 function needsPeriod(text) {
@@ -173,8 +283,10 @@ async function askAdvisor(question, state, period, history) {
     "Primero conversa y pregunta cuando falte un dato. No hagas analisis, presupuesto ni graficos si no te lo pidieron.",
     "Nunca afirmes que cambiaste gastos, categorias, presupuestos o ahorros: para eso pide confirmacion explicita.",
     "Para clasificar, usa patrones y categorias existentes. Si no estas seguro, explica la duda y pregunta.",
+    "Conoce y explica la app usando el MANUAL_DE_USO. Si preguntan como hacer algo, da los pasos exactos de la seccion correspondiente. No inventes botones ni afirmes haber cambiado datos.",
     "Responde en maximo 110 palabras y no inventes datos.",
     "Datos disponibles: " + JSON.stringify(context),
+    "MANUAL_DE_USO:\n" + APP_KNOWLEDGE,
   ].join("\n");
   const messages = [{ role: "system", content: system }];
   history.slice(-6).forEach((entry) => messages.push({ role: entry.role, content: entry.text }));
@@ -286,20 +398,29 @@ async function handleCallback(query) {
   const scope = parts[2];
   const id = parts[3];
   const categoryId = parts[4];
-  if (prefix !== "cc" || !process.env.AGENT_OWNER_USER_ID) return;
+  if (!["cc", "act"].includes(prefix) || !process.env.AGENT_OWNER_USER_ID) return;
   const state = await getState();
   const categories = getCategories(state);
   const categoryName = (value) => categories.find((category) => category.id === value)?.name || "Sin categoria";
 
+  if (prefix === "act") {
+    return handleActionCallback(query, state);
+  }
+
   if (action === "keep") {
     const pending = state.pendingMovements.find((item) => item.id === id);
-    if (pending) {
-      pending.classification = { ...(pending.classification || {}), status: "approved", confidence: 1, source: "telegram" };
-      state.pendingMovements = state.pendingMovements.filter((item) => item.id !== id);
-      state.movements.unshift(pending);
+    const movement = pending || state.movements.find((item) => item.id === id);
+    if (movement) {
+      movement.classification = { ...(movement.classification || {}), status: "approved", confidence: 1, source: "telegram" };
+      if (pending) {
+        state.pendingMovements = state.pendingMovements.filter((item) => item.id !== id);
+        state.movements.unshift(movement);
+      }
       await saveState(state);
     }
-    await answerCallback(query.id, "Perfecto, lo dejo asi.");
+    await editMessage(query.message.chat.id, query.message.message_id,
+      `✅ Listo. ${movement ? movement.merchant : "El movimiento"} queda en ${movement ? categoryName(movement.category) : "su categoría actual"}.`, []);
+    await answerCallback(query.id, "Movimiento confirmado.");
     return;
   }
   if (action === "change") {
@@ -331,6 +452,81 @@ async function handleCallback(query) {
   }
 }
 
+async function handleActionCallback(query, state) {
+  const action = String(query.data || "").split(":")[1];
+  const actionId = String(query.data || "").split(":")[2];
+  const chatId = String(query.message?.chat?.id || "");
+  const pending = state.agentMemory.pendingActions?.[chatId];
+  if (!pending || pending.id !== actionId) return answerCallback(query.id, "Esta autorización ya venció.");
+  if (action === "cancel") {
+    delete state.agentMemory.pendingActions[chatId];
+    await saveState(state);
+    await editMessage(query.message.chat.id, query.message.message_id, "❌ Acción cancelada. No cambié ningún dato.", []);
+    return answerCallback(query.id, "Cancelado.");
+  }
+  if (action === "confirm") {
+    await executePendingAction({ chat: query.message.chat }, state, pending, query.message);
+    return answerCallback(query.id, "Acción autorizada.");
+  }
+  return answerCallback(query.id, "Acción no reconocida.");
+}
+
+async function executePendingAction(message, state, pending, telegramMessage = null) {
+  const chatId = String(message.chat.id);
+  if (pending.type !== "delete_movement") return sendMessage(chatId, "No pude ejecutar esa acción todavía.");
+  const target = state.movements.find((movement) => movement.id === pending.movementId);
+  if (!target) {
+    delete state.agentMemory.pendingActions[chatId];
+    await saveState(state);
+    return sendMessage(chatId, "Ese movimiento ya no existe o ya fue eliminado.");
+  }
+  const { result: removed } = executeAction(state, { type: "delete_movement", id: pending.movementId });
+  delete state.agentMemory.pendingActions[chatId];
+  await saveState(state);
+  const text = `🗑️ Listo. Eliminé ${removed.merchant} por CRC ${Number(removed.amount || 0).toFixed(2)} del ${removed.date}.`;
+  if (telegramMessage) return editMessage(telegramMessage.chat.id, telegramMessage.message_id, text, []);
+  return sendMessage(chatId, text);
+}
+
+function findDeleteRequest(question, state) {
+  const normalized = normalize(question);
+  if (!/(elimina|eliminar|borra|borrar|quita|quitar)/.test(normalized) ||
+      !/(gasto|movimiento|compra|transaccion|transacción)/.test(normalized)) return { status: "none" };
+  const movements = Array.isArray(state.movements) ? state.movements : [];
+  const amountMatch = normalized.match(/(?:crc|₡)?\s*([\d][\d.,]*)/);
+  const amount = amountMatch ? parseLooseMoney(amountMatch[1]) : null;
+  const words = normalized.match(/(?:de|del|en)\s+(.+?)(?:\s+(?:por|de|del|del día|del dia|del mes)|$)/);
+  const merchantQuery = words ? words[1].trim() : "";
+  let matches = movements.filter((movement) => movement.type === "expense");
+  if (amount !== null) matches = matches.filter((movement) => Math.abs(Number(movement.amount) - amount) < 0.01);
+  if (merchantQuery) matches = matches.filter((movement) => normalize(movement.merchant).includes(merchantQuery));
+  if (matches.length === 1) return { status: "ready", movement: matches[0] };
+  if (matches.length > 1) {
+    return {
+      status: "ambiguous",
+      message: "Encontré varios movimientos parecidos. Dime el comercio y el monto exacto para saber cuál quieres eliminar.",
+    };
+  }
+  return {
+    status: "ambiguous",
+    message: "No encontré un único movimiento para eliminar. Dime el comercio y el monto, por ejemplo: “elimina el gasto de Uber por ₡4.250”.",
+  };
+}
+
+function parseLooseMoney(value) {
+  const clean = String(value || "").replace(/[^\d.,]/g, "");
+  if (!clean) return null;
+  if (/^\d{1,3}(\.\d{3})+$/.test(clean) && !clean.includes(",")) return Number(clean.replace(/\./g, ""));
+  const lastComma = clean.lastIndexOf(",");
+  const lastDot = clean.lastIndexOf(".");
+  const decimalSeparator = lastComma > lastDot ? "," : ".";
+  return Number(clean.replace(new RegExp(`\\${decimalSeparator === "," ? "." : ","}`, "g"), "").replace(decimalSeparator, "."));
+}
+
+function makeActionId() {
+  return `a-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 function buildCategoryButtons(categories, movement, scope) {
   const options = categories.filter((category) => category.kind === movement.type).slice(0, 14);
   const rows = [];
@@ -351,6 +547,8 @@ async function getState() {
   state.agentMemory.notes = Array.isArray(state.agentMemory.notes) ? state.agentMemory.notes : [];
   state.agentMemory.goals = Array.isArray(state.agentMemory.goals) ? state.agentMemory.goals : [];
   state.agentMemory.telegramSessions = state.agentMemory.telegramSessions || {};
+  state.agentMemory.pendingActions = state.agentMemory.pendingActions || {};
+  state.agentMemory.pendingIntents = state.agentMemory.pendingIntents || {};
   return state;
 }
 

@@ -1,5 +1,6 @@
 const GEMINI_MODEL = "gemini-2.0-flash";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const { APP_KNOWLEDGE } = require("./app-knowledge");
 
 module.exports = async function handler(req, res) {
   setCorsHeaders(res);
@@ -101,6 +102,7 @@ function buildPrompt(question, context, conversation) {
     "Si el historial contradice el CONTEXTO, el CONTEXTO financiero actual gana.",
     "No inventes movimientos, montos, presupuestos ni ingresos.",
     "Puedes recomendar ajustes de presupuesto, ahorro o habitos, pero no digas que ya los cambiaste.",
+    "Conoce y explica la app usando el MANUAL_DE_USO. Si preguntan como hacer algo, da los pasos exactos de la seccion correspondiente. No inventes botones ni capacidades.",
     "Manten la respuesta breve: maximo 5 lineas salvo que el usuario pida detalle.",
     "Solo devuelve chart.items si CONTEXTO.chart es true y el usuario pidio un grafico claramente. Si no, chart.items debe ir vacio.",
     "Devuelve SOLO JSON valido, sin markdown.",
@@ -110,6 +112,7 @@ function buildPrompt(question, context, conversation) {
     `HISTORIAL_RECIENTE: ${JSON.stringify(recentConversation).slice(0, 2200)}`,
     `PREGUNTA: ${question}`,
     `CONTEXTO: ${JSON.stringify(context).slice(0, 5500)}`,
+    `MANUAL_DE_USO: ${APP_KNOWLEDGE}`,
   ].join("\n");
 }
 

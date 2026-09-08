@@ -53,13 +53,11 @@ module.exports = async function handler(req, res) {
       }
       known.add(movement.sourceId);
 
-      if (movement.classification.status === "auto_accepted") {
-        state.movements.unshift(movement);
-        result.autoAccepted.push(movement);
-      } else {
-        state.pendingMovements.unshift(movement);
-        result.pending.push(movement);
-      }
+      // La pareja no tiene que aprobar cada correo. El agente lo registra
+      // automaticamente y Telegram ofrece una correccion solo si hace falta.
+      // La confianza se muestra en el aviso para que sepan cuando revisar.
+      state.movements.unshift(movement);
+      result.autoAccepted.push(movement);
     }
 
     state.agentMemory.recentEvents = [
@@ -96,27 +94,45 @@ async function readJsonBody(req) {
 
 async function notifyTelegram(result, categories) {
   const categoryName = (id) => categories.find((category) => category.id === id)?.name || "Sin categoria";
-  for (const movement of result.autoAccepted) {
-    await sendTelegram(
-      `Agregue un ${movement.type === "income" ? "ingreso" : "gasto"}: ${movement.merchant} por CRC ${movement.amount.toFixed(2)}. Categoria: ${categoryName(movement.category)}.`,
-      [[
-        { text: "Cambiar categoria", callback_data: `cc:change:m:${movement.id}` },
-        { text: "Dejar asi", callback_data: `cc:keep:m:${movement.id}` },
-      ]],
+  const dateLabel = (value) => {
+    const date = new Date(`${String(value || "").slice(0, 10)}T12:00:00`);
+    return Number.isNaN(date.getTime())
+      ? String(value || "Fecha no disponible")
+      : date.toLocaleDateString("es-CR", { day: "2-digit", month: "short", year: "numeric" });
+  };
+  const typeLabel = (movement) => movement.type === "income" ? "Ingreso" : "Gasto";
+  const confidenceLabel = (movement) => {
+    const confidence = Math.round(Number(movement.classification?.confidence || 0) * 100);
+    return confidence >= 90
+      ? `✅ alta (${confidence}%)`
+      : confidence
+        ? `⚠️ para revisar (${confidence}%)`
+        : "⚠️ para revisar";
+  };
+  const movements = [...result.autoAccepted, ...result.pending];
+  if (!movements.length) return;
+
+  // Un solo reporte por lectura: asi pueden comparar 4-5 movimientos de una
+  // vez y tocar exactamente el boton del que necesiten corregir.
+  const lines = [
+    "📬 Cuenta Clara · movimientos revisados",
+    "",
+    `Encontré ${movements.length} movimiento${movements.length === 1 ? "" : "s"}. Ya quedaron registrados:`,
+    "",
+  ];
+  const keyboard = [];
+  movements.forEach((movement, index) => {
+    lines.push(
+      `${index + 1}. ${movement.type === "income" ? "💵" : "🛒"} ${movement.merchant}`,
+      `   💰 CRC ${movement.amount.toFixed(2)} · 📅 ${dateLabel(movement.date)}`,
+      `   🏷️ ${categoryName(movement.category)} · ${confidenceLabel(movement)}`,
+      "",
     );
-  }
-  for (const movement of result.pending) {
-    const expenseCategories = categories.filter((category) => category.kind === movement.type).slice(0, 14);
-    const buttons = [];
-    for (let index = 0; index < expenseCategories.length; index += 2) {
-      buttons.push(expenseCategories.slice(index, index + 2).map((category) => ({
-        text: category.name,
-        callback_data: `cc:set:p:${movement.id}:${category.id}`,
-      })));
-    }
-    await sendTelegram(
-      `Tengo duda con ${movement.merchant} por CRC ${movement.amount.toFixed(2)}. La deje en Bandeja. Que categoria es?`,
-      buttons,
-    );
-  }
+    keyboard.push([{
+      text: `✏️ Cambiar categoría · ${index + 1}. ${movement.merchant}`.slice(0, 64),
+      callback_data: `cc:change:m:${movement.id}`,
+    }]);
+  });
+  lines.push("Si todo está bien, no tienen que hacer nada. Si algo está mal, toquen su botón correspondiente.");
+  await sendTelegram(lines.join("\n"), keyboard);
 }

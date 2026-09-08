@@ -1,6 +1,6 @@
 # Make: correos de tarjeta a Bandeja
 
-Este flujo es manual para gastar menos operaciones: la app llama a Make solo cuando se toca el boton **Leer correo**.
+La app llama a Make desde `/api/sync-email`. Los resultados no se guardan directamente: primero pasan por `/api/agent-inbox`, donde el agente clasifica cada movimiento, lo guarda en Supabase y notifica Telegram.
 
 ## Variables en Vercel
 
@@ -51,4 +51,4 @@ La app llama a `/api/sync-email`. Ese endpoint valida la sesion de Supabase ante
      }
      ```
 
-La app recibe esos items como pendientes. Nada entra al historial hasta que se revise y se toque **Aceptar**.
+La app y el escenario automatico usan el mismo clasificador. Los movimientos con confianza alta entran al historial y se notifican en Telegram; los dudosos quedan en Bandeja y esperan que ustedes elijan una categoria. Nada dudoso entra al historial hasta confirmarlo.

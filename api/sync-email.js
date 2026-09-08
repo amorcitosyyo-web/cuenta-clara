@@ -37,8 +37,48 @@ module.exports = async function handler(req, res) {
       return;
     }
 
+    // Todo correo que entra por el boton de la app debe pasar por el mismo
+    // clasificador que usa el flujo automatico de Make. Asi no queda una ruta
+    // que agregue pendientes sin notificar ni aprender patrones.
+    const items = normalizeMakeItems(payload);
+    if (!process.env.AGENT_INGEST_TOKEN) {
+      res.status(501).json({
+        error: "Falta configurar AGENT_INGEST_TOKEN para procesar el correo con el agente.",
+        items: [],
+      });
+      return;
+    }
+
+    const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0];
+    const host = req.headers.host;
+    if (!host) {
+      res.status(500).json({ error: "No se pudo determinar el dominio de Cuenta Clara.", items: [] });
+      return;
+    }
+    const agentResponse = await fetch(`${protocol}://${host}/api/agent-inbox`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Cuenta-Clara-Agent-Token": process.env.AGENT_INGEST_TOKEN,
+      },
+      body: JSON.stringify({ items }),
+    });
+    const agentPayload = await agentResponse.json().catch(() => ({}));
+    if (!agentResponse.ok) {
+      res.status(agentResponse.status).json({
+        error: agentPayload.error || "El agente no pudo procesar el correo.",
+        items: [],
+      });
+      return;
+    }
+
     res.status(200).json({
-      items: normalizeMakeItems(payload),
+      items: [],
+      agentProcessed: true,
+      processed: Number(agentPayload.processed || 0),
+      autoAccepted: Number(agentPayload.autoAccepted?.length || 0),
+      pending: Number(agentPayload.pending?.length || 0),
+      duplicates: Number(agentPayload.duplicates?.length || 0),
     });
   } catch (error) {
     console.error(error);

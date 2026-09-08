@@ -2873,6 +2873,19 @@ async function syncEmailInbox() {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || "No se pudo leer el correo.");
 
+    if (payload.agentProcessed) {
+      if (remote.enabled && remote.ready && remote.user && remote.client) {
+        await loadRemoteData();
+        categories = mergeCategories(state.data.customCategories);
+        populateSelects();
+      }
+      render();
+      els.inboxStatus.textContent = payload.processed
+        ? `${payload.processed} movimiento(s) procesados por el agente. Revisa Telegram y la Bandeja.`
+        : "No llegaron movimientos nuevos.";
+      return;
+    }
+
     const incoming = normalizePendingMovements(payload.items || payload.pending || payload.movements || payload);
     const before = state.data.pendingMovements.length;
     const known = new Set([
