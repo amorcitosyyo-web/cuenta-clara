@@ -125,6 +125,32 @@ async function replyAsAgent(message, text, request = null) {
     return sendMessage(chatId, "Listo, no hice ningún cambio.");
   }
 
+  const createRequest = findCreateMovementRequest(question, state, history);
+  if (createRequest.status === "ready") {
+    const actionId = makeActionId();
+    state.agentMemory.pendingActions[sessionKey] = {
+      id: actionId,
+      type: "create_movement",
+      action: { type: "create_movement", data: createRequest.data },
+      createdAt: new Date().toISOString(),
+    };
+    await saveState(state);
+    return sendMessage(chatId,
+      [
+        "⚠️ Antes de guardar este gasto necesito tu autorización.",
+        "",
+        `🛒 ${createRequest.data.merchant}`,
+        `💰 CRC ${Number(createRequest.data.amount).toFixed(2)} · 📅 ${createRequest.data.date}`,
+        `🏷️ ${createRequest.categoryName}`,
+        "",
+        "¿Quieres que lo agregue al historial?",
+      ].join("\n"),
+      [[
+        { text: "✅ Sí, agregar", callback_data: `act:confirm:${actionId}` },
+        { text: "❌ Cancelar", callback_data: `act:cancel:${actionId}` },
+      ]]);
+  }
+
   const deleteRequest = findDeleteRequest(question, state);
   if (deleteRequest.status === "ready") {
     const actionId = makeActionId();
@@ -479,6 +505,14 @@ async function handleActionCallback(query, state) {
 
 async function executePendingAction(message, state, pending, telegramMessage = null) {
   const chatId = String(message.chat.id);
+  if (pending.type === "create_movement") {
+    const { result: created } = executeAction(state, pending.action);
+    delete state.agentMemory.pendingActions[chatId];
+    await saveState(state);
+    const text = `✅ Listo. Agregué ${created.merchant || "el gasto"} por CRC ${Number(created.amount || 0).toFixed(2)} al historial.`;
+    if (telegramMessage) return editMessage(telegramMessage.chat.id, telegramMessage.message_id, text, []);
+    return sendMessage(chatId, text);
+  }
   if (pending.type !== "delete_movement") return sendMessage(chatId, "No pude ejecutar esa acción todavía.");
   const target = state.movements.find((movement) => movement.id === pending.movementId);
   if (!target) {
@@ -517,6 +551,51 @@ function findDeleteRequest(question, state) {
     status: "ambiguous",
     message: "No encontré un único movimiento para eliminar. Dime el comercio y el monto, por ejemplo: “elimina el gasto de Uber por ₡4.250”.",
   };
+}
+
+function findCreateMovementRequest(question, state, history) {
+  const normalized = normalize(question);
+  if (!/(agrega|agregar|agregalo|agrégalo|registra|registrar|anota|anotar|añade|anadir|añadir|mete|meter)/.test(normalized)) {
+    return { status: "none" };
+  }
+  const userTexts = [...history.filter((entry) => entry.role === "user").map((entry) => entry.text), question];
+  const joined = userTexts.join(" ");
+  const amount = extractMovementAmount(joined);
+  const date = /\bhoy\b/i.test(normalize(joined)) ? new Date().toISOString().slice(0, 10) : "";
+  const merchant = findMerchantInConversation(userTexts);
+  if (!amount || !date || !merchant) return { status: "incomplete" };
+
+  const categories = getCategories(state).filter((category) => category.kind === "expense");
+  const foodRelated = /(fruta|verdura|comida|aliment|super|automercado|mercado)/.test(normalize(joined));
+  const category = foodRelated
+    ? categories.find((item) => /(aliment|comida|super)/.test(normalize(item.name)))
+    : categories.find((item) => item.id === "imprevistos") || categories[0];
+  if (!category) return { status: "incomplete" };
+  return {
+    status: "ready",
+    categoryName: category.name,
+    data: { type: "expense", amount, date, merchant, category: category.id },
+  };
+}
+
+function extractMovementAmount(value) {
+  const text = normalize(value);
+  const amountWithUnit = text.match(/(?:₡\s*)?(\d+(?:[.,]\d+)?)\s*(mil(?:es)?|colones|crc)\b/);
+  if (amountWithUnit) {
+    const amount = parseLooseMoney(amountWithUnit[1]);
+    return /mil/.test(amountWithUnit[2]) ? amount * 1000 : amount;
+  }
+  const symbolAmount = text.match(/(?:₡|crc)\s*(\d+(?:[.,]\d+)?)/);
+  return symbolAmount ? parseLooseMoney(symbolAmount[1]) : null;
+}
+
+function findMerchantInConversation(userTexts) {
+  const ignored = new Set(["porfa", "por favor", "agregalo", "agregalo porfa", "quiero que tu lo agregues", "quiero que tú lo agregues"]);
+  const single = [...userTexts].reverse().map((value) => String(value || "").trim()).find((value) =>
+    value.length >= 3 && value.length <= 50 && /^[\p{L}\s.'’-]+$/u.test(value) && !ignored.has(normalize(value)));
+  if (single) return single;
+  const match = userTexts.join(" ").match(/(?:en|de|para)\s+([\p{L}][\p{L}\s.'’-]{2,50})/u);
+  return match ? match[1].trim() : "";
 }
 
 function parseLooseMoney(value) {

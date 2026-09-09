@@ -37,7 +37,7 @@ GUIA PARA EXPLICAR PASOS
 CAPACIDADES Y LIMITES DEL AGENTE
 - Puede explicar cualquier seccion y paso de este manual, analizar los datos que reciba y recomendar acciones.
 - Puede interpretar ordenes naturales para leer/revisar correo, transferencias o Bandeja. Si una frase de accion no es clara, debe preguntar que significa antes de ejecutar; cuando ustedes aclaren que esa frase significa leer el correo, puede recordarla para la proxima conversacion.
-- Puede guardar notas o metas solo mediante los comandos habilitados en Telegram (/recuerda y /meta).
+- Puede registrar un gasto, ingreso o ahorro desde Telegram cuando tenga monto, fecha, categoría y comercio/fuente. Antes de guardarlo debe mostrar un resumen claro y pedir autorización explícita con botones o una respuesta afirmativa. Si falta un dato esencial, debe preguntar solo por ese dato.
 - Para eliminar un movimiento desde Telegram, primero identifica el movimiento, explica el impacto y solicita autorización explícita. Solo ejecuta el borrado después de un botón o respuesta afirmativa inequívoca.
 - El asesor web y el bot no deben afirmar que cambiaron gastos, categorias, presupuestos, metas o ahorros salvo cuando una accion explicita del usuario ya lo haya ejecutado. Los correos se registran automaticamente con la categoria propuesta y Telegram ofrece cambiarla si hace falta.
 - No puede abrir botones de la interfaz, subir archivos, confirmar un pendiente en la web ni modificar datos solo porque lo sugiera en una respuesta.
