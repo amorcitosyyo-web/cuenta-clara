@@ -16,8 +16,9 @@ module.exports = async function handler(req, res) {
     return res.status(401).end();
   }
 
+  let update;
   try {
-    const update = req.body && typeof req.body === "object" ? req.body : await readJsonBody(req);
+    update = req.body && typeof req.body === "object" ? req.body : await readJsonBody(req);
     if (update.callback_query) {
       if (isAllowed(update.callback_query)) await handleCallback(update.callback_query);
     } else if (update.message && isAllowedMessage(update.message)) {
