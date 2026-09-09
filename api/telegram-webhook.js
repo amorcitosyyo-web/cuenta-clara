@@ -111,6 +111,7 @@ async function replyAsAgent(message, text, request = null) {
 
   const sessionKey = String(chatId);
   const sessions = state.agentMemory.telegramSessions;
+  const history = Array.isArray(sessions[sessionKey]) ? sessions[sessionKey] : [];
   const pendingIntents = state.agentMemory.pendingIntents || {};
   const pendingIntentPhrase = pendingIntents[sessionKey] || "";
 
@@ -169,12 +170,17 @@ async function replyAsAgent(message, text, request = null) {
         userId: process.env.AGENT_OWNER_USER_ID,
         baseUrl: getBaseUrl(request),
       });
-      await saveState(state);
-      return sendMessage(chatId, result.processed
+      const reply = result.processed
         ? `Listo 💌. El agente revisó el correo y procesó ${result.processed} movimiento${result.processed === 1 ? "" : "s"}. Les envié el resumen con las categorías.`
-        : "Listo 💌. Revisé el correo y no encontré movimientos nuevos.");
+        : "Listo 💌. Revisé el correo y no encontré movimientos nuevos.";
+      rememberConversation(state, sessionKey, question, reply);
+      await saveState(state);
+      return sendMessage(chatId, reply);
     } catch (error) {
-      return sendMessage(chatId, `No pude leer el correo todavía: ${error.message}`);
+      const reply = `No pude leer el correo todavía: ${error.message}`;
+      rememberConversation(state, sessionKey, question, reply);
+      await saveState(state);
+      return sendMessage(chatId, reply);
     }
   }
 
@@ -191,14 +197,9 @@ async function replyAsAgent(message, text, request = null) {
     return sendMessage(chatId, "Claro. Para revisarlo bien, dime el periodo: por ejemplo “julio 2026”, “los ultimos 5 dias” o un rango de fechas.");
   }
 
-  const history = Array.isArray(sessions[sessionKey]) ? sessions[sessionKey] : [];
   await sendChatAction(chatId, "typing");
   const answer = await askAdvisor(question, state, period, history);
-  sessions[sessionKey] = uniqueLast([
-    ...history,
-    { role: "user", text: truncate(question, 360) },
-    { role: "assistant", text: truncate(answer, 650) },
-  ], 8);
+  rememberConversation(state, sessionKey, question, answer);
   await saveState(state);
   return sendMessage(chatId, answer);
 }
@@ -559,6 +560,16 @@ async function getState() {
 
 function saveState(state) {
   return saveAppState(process.env.AGENT_OWNER_USER_ID, state);
+}
+
+function rememberConversation(state, sessionKey, question, answer) {
+  const sessions = state.agentMemory.telegramSessions || (state.agentMemory.telegramSessions = {});
+  const history = Array.isArray(sessions[sessionKey]) ? sessions[sessionKey] : [];
+  sessions[sessionKey] = uniqueLast([
+    ...history,
+    { role: "user", text: truncate(question, 360) },
+    { role: "assistant", text: truncate(answer, 650) },
+  ], 8);
 }
 
 function uniqueLast(items, limit) {
