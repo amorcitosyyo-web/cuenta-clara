@@ -1,4 +1,5 @@
 const { processInboxItems } = require("./agent-inbox");
+const { normalizeMakeItems } = require("./make-payload");
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
@@ -88,14 +89,6 @@ async function readJsonBody(req) {
   const raw = Buffer.concat(chunks).toString("utf8");
   if (!raw) return {};
   return JSON.parse(raw);
-}
-
-function normalizeMakeItems(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload.items)) return payload.items;
-  if (Array.isArray(payload.pending)) return payload.pending;
-  if (Array.isArray(payload.movements)) return payload.movements;
-  return [];
 }
 
 function parseJson(text) {
