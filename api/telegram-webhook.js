@@ -180,6 +180,18 @@ async function replyAsAgent(message, text, request = null) {
   if (deleteRequest.status === "ambiguous") {
     return sendMessage(chatId, deleteRequest.message);
   }
+
+  // Las consultas de "hoy" no deben depender de una interpretación del
+  // modelo: la fecha y los movimientos ya están disponibles en la app.
+  // Así evitamos respuestas contradictorias cuando existe un movimiento con
+  // una fecha distinta a la que la persona esperaba.
+  if (isTodayMovementsQuestion(question)) {
+    const reply = summarizeTodayMovements(state);
+    rememberConversation(state, sessionKey, question, reply);
+    await saveState(state);
+    return sendMessage(chatId, reply);
+  }
+
   const emailIntent = detectEmailIntent(question, state);
   if (emailIntent.matched) {
     if (pendingIntentPhrase) {
@@ -210,13 +222,6 @@ async function replyAsAgent(message, text, request = null) {
     }
   }
 
-  if (looksLikeActionRequest(question) && !emailIntent.matched) {
-    pendingIntents[sessionKey] = question;
-    state.agentMemory.pendingIntents = pendingIntents;
-    await saveState(state);
-    return sendMessage(chatId, "Quiero ayudarte, pero necesito precisar la acción. ¿Te refieres a leer el correo y revisar las transferencias, revisar la Bandeja o hacer otra cosa?");
-  }
-
   const requiredPeriod = needsPeriod(question);
   const period = parsePeriod(question);
   if (requiredPeriod && !period) {
@@ -242,8 +247,30 @@ function detectEmailIntent(question, state) {
   return { matched: learned || direct };
 }
 
-function looksLikeActionRequest(question) {
-  return /\b(haz|hacer|ve|revisa|revisar|lee|leer|busca|buscar|actualiza|actualizar|sincroniza|sincronizar|arregla|arreglar|trae|traer)\b/i.test(normalize(question));
+function isTodayMovementsQuestion(question) {
+  const text = normalize(question);
+  return /\b(hoy|dia de hoy)\b/.test(text) &&
+    /\b(gasto|gastos|movimiento|movimientos|compra|compras|transaccion|transacciones)\b/.test(text) &&
+    !/(agrega|agregar|registra|registrar|anota|anotar|elimina|eliminar|borra|borrar)/.test(text);
+}
+
+function summarizeTodayMovements(state) {
+  const today = costaRicaToday();
+  const movements = (state.movements || []).filter((item) => item.date === today && item.type !== "savings");
+  if (movements.length) {
+    const lines = movements.slice(0, 8).map((item) => `• ${item.merchant || "Sin comercio"}: CRC ${Number(item.amount || 0).toFixed(2)}`);
+    const totalExpenses = movements.filter((item) => item.type === "expense").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    return `Hoy (${today}) hay ${movements.length} movimiento${movements.length === 1 ? "" : "s"}:\n${lines.join("\n")}\n\nTotal de gastos hoy: CRC ${totalExpenses.toFixed(2)}.`;
+  }
+
+  // Un registro creado antes de corregir la zona horaria puede quedar con la
+  // fecha del día siguiente. Se muestra de forma transparente sin cambiarlo.
+  const adjacent = (state.movements || []).filter((item) => item.date && item.date !== today && item.type !== "savings").slice(0, 3);
+  if (adjacent.length) {
+    const details = adjacent.map((item) => `${item.merchant || "Sin comercio"} (CRC ${Number(item.amount || 0).toFixed(2)}, fecha ${item.date})`).join("; ");
+    return `No hay movimientos registrados para hoy (${today}). Sí veo: ${details}. Si alguno corresponde a hoy pero tiene una fecha incorrecta, dímelo y te pediré confirmación antes de corregirlo.`;
+  }
+  return `No hay movimientos registrados para hoy (${today}).`;
 }
 
 function uniqueAliases(items, limit) {
