@@ -346,7 +346,7 @@ function buildContext(state, period, question) {
   const wantsDetail = /(detalle|movimientos|lista|donde|cuales|cu[aá]les)/i.test(question);
   return {
     periodo: period ? period.label : "sin periodo solicitado",
-    totales,
+    totales: totals,
     categorias_gasto: Object.entries(byCategory).sort((a, b) => b[1] - a[1]).slice(0, 6),
     movimientos: wantsDetail ? movements.slice(0, 10).map((movement) => ({
       fecha: movement.date,
