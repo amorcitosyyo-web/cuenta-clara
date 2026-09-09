@@ -15,8 +15,9 @@ async function runEmailAgentSync({ existingSourceIds = [], userId = "", email = 
   const makePayload = await readPayload(makeResponse);
   if (!makeResponse.ok) throw new Error(makePayload.error || "Make no pudo leer el correo.");
 
-  const result = await processInboxItems(normalizeItems(makePayload), userId);
-  return { ok: true, ...result, processed: result.autoAccepted.length + result.pending.length };
+  const items = normalizeItems(makePayload);
+  const result = await processInboxItems(items, userId);
+  return { ok: true, ...result, received: items.length, processed: result.autoAccepted.length + result.pending.length };
 }
 
 async function readPayload(response) {

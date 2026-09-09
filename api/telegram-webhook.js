@@ -84,6 +84,7 @@ async function handleMessage(message, request = null) {
     delete state.agentMemory.telegramSessions[String(chatId)];
     delete state.agentMemory.pendingIntents[String(chatId)];
     delete state.agentMemory.pendingActions[String(chatId)];
+    delete state.agentMemory.movementDrafts[String(chatId)];
     await saveState(state);
     return sendMessage(chatId, "Listo. Limpie el contexto de esta conversacion, sin borrar ningun gasto ni dato financiero.");
   }
@@ -125,30 +126,11 @@ async function replyAsAgent(message, text, request = null) {
     return sendMessage(chatId, "Listo, no hice ningún cambio.");
   }
 
-  const createRequest = findCreateMovementRequest(question, state, history);
-  if (createRequest.status === "ready") {
-    const actionId = makeActionId();
-    state.agentMemory.pendingActions[sessionKey] = {
-      id: actionId,
-      type: "create_movement",
-      action: { type: "create_movement", data: createRequest.data },
-      createdAt: new Date().toISOString(),
-    };
+  const draftResult = handleMovementDraft(question, state, sessionKey);
+  if (draftResult.status === "ready") return requestCreateConfirmation(chatId, state, sessionKey, draftResult);
+  if (draftResult.status === "incomplete") {
     await saveState(state);
-    return sendMessage(chatId,
-      [
-        "⚠️ Antes de guardar este gasto necesito tu autorización.",
-        "",
-        `🛒 ${createRequest.data.merchant}`,
-        `💰 CRC ${Number(createRequest.data.amount).toFixed(2)} · 📅 ${createRequest.data.date}`,
-        `🏷️ ${createRequest.categoryName}`,
-        "",
-        "¿Quieres que lo agregue al historial?",
-      ].join("\n"),
-      [[
-        { text: "✅ Sí, agregar", callback_data: `act:confirm:${actionId}` },
-        { text: "❌ Cancelar", callback_data: `act:cancel:${actionId}` },
-      ]]);
+    return sendMessage(chatId, draftResult.message);
   }
 
   const deleteRequest = findDeleteRequest(question, state);
@@ -191,6 +173,12 @@ async function replyAsAgent(message, text, request = null) {
     await saveState(state);
     return sendMessage(chatId, reply);
   }
+  if (isMonthMovementsQuestion(question)) {
+    const reply = summarizeMonthMovements(state);
+    rememberConversation(state, sessionKey, question, reply);
+    await saveState(state);
+    return sendMessage(chatId, reply);
+  }
 
   const emailIntent = detectEmailIntent(question, state);
   if (emailIntent.matched) {
@@ -209,8 +197,8 @@ async function replyAsAgent(message, text, request = null) {
         baseUrl: getBaseUrl(request),
       });
       const reply = result.processed
-        ? `Listo 💌. El agente revisó el correo y procesó ${result.processed} movimiento${result.processed === 1 ? "" : "s"}. Les envié el resumen con las categorías.`
-        : "Listo 💌. Revisé el correo y no encontré movimientos nuevos.";
+        ? `Listo 💌. Make devolvió ${result.received} movimiento${result.received === 1 ? "" : "s"}; el agente procesó ${result.processed}.`
+        : `Listo 💌. Make respondió ${result.received || 0} movimientos nuevos; no había nada nuevo que agregar.`;
       rememberConversation(state, sessionKey, question, reply);
       await saveState(state);
       return sendMessage(chatId, reply);
@@ -254,6 +242,12 @@ function isTodayMovementsQuestion(question) {
     !/(agrega|agregar|registra|registrar|anota|anotar|elimina|eliminar|borra|borrar)/.test(text);
 }
 
+function isMonthMovementsQuestion(question) {
+  const text = normalize(question);
+  return /(este mes|mes actual)/.test(text) &&
+    /\b(gasto|gastos|movimiento|movimientos|compra|compras|transaccion|transacciones)\b/.test(text);
+}
+
 function summarizeTodayMovements(state) {
   const today = costaRicaToday();
   const movements = (state.movements || []).filter((item) => item.date === today && item.type !== "savings");
@@ -271,6 +265,16 @@ function summarizeTodayMovements(state) {
     return `No hay movimientos registrados para hoy (${today}). Sí veo: ${details}. Si alguno corresponde a hoy pero tiene una fecha incorrecta, dímelo y te pediré confirmación antes de corregirlo.`;
   }
   return `No hay movimientos registrados para hoy (${today}).`;
+}
+
+function summarizeMonthMovements(state) {
+  const month = costaRicaToday().slice(0, 7);
+  const movements = (state.movements || []).filter((item) => String(item.date || "").startsWith(month) && item.type !== "savings");
+  const expenses = movements.filter((item) => item.type === "expense");
+  if (!movements.length) return `No hay movimientos registrados en ${month}.`;
+  const lines = expenses.slice(0, 10).map((item) => `• ${item.date} · ${item.merchant || "Sin comercio"}: CRC ${Number(item.amount || 0).toFixed(2)}`);
+  const total = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  return `Movimientos de ${month}:\n${lines.join("\n") || "No hay gastos."}\n\nTotal de gastos del mes: CRC ${total.toFixed(2)}.`;
 }
 
 function uniqueAliases(items, limit) {
@@ -583,29 +587,91 @@ function findDeleteRequest(question, state) {
   };
 }
 
-function findCreateMovementRequest(question, state, history) {
+function handleMovementDraft(question, state, sessionKey) {
   const normalized = normalize(question);
-  if (!/(agrega|agregar|agregalo|agrégalo|registra|registrar|anota|anotar|añade|anadir|añadir|mete|meter)/.test(normalized)) {
+  const drafts = state.agentMemory.movementDrafts || (state.agentMemory.movementDrafts = {});
+  const existing = drafts[sessionKey];
+  const startsRequest = /(agrega|agregar|agregalo|agrégalo|registra|registrar|anota|anotar|añade|anadir|añadir|mete|meter)/.test(normalized);
+  if (!existing && !startsRequest) {
     return { status: "none" };
   }
-  const userTexts = [...history.filter((entry) => entry.role === "user").map((entry) => entry.text), question];
-  const joined = userTexts.join(" ");
-  const amount = extractMovementAmount(joined);
-  const date = /\bhoy\b/i.test(normalize(joined)) ? costaRicaToday() : "";
-  const merchant = findMerchantInConversation(userTexts);
-  if (!amount || !date || !merchant) return { status: "incomplete" };
+  if (existing && /^(cancelar|cancela|no|dejalo|déjalo)$/i.test(normalized)) {
+    delete drafts[sessionKey];
+    return { status: "incomplete", message: "Listo, cancelé el registro pendiente." };
+  }
 
-  const categories = getCategories(state).filter((category) => category.kind === "expense");
-  const foodRelated = /(fruta|verdura|comida|aliment|super|automercado|mercado)/.test(normalize(joined));
-  const category = foodRelated
-    ? categories.find((item) => /(aliment|comida|super)/.test(normalize(item.name)))
-    : categories.find((item) => item.id === "imprevistos") || categories[0];
-  if (!category) return { status: "incomplete" };
+  const draft = { ...(existing || { type: /\b(ingreso|salario|pago recibido)\b/.test(normalized) ? "income" : "expense" }) };
+  const amount = extractMovementAmount(question);
+  if (amount) draft.amount = amount;
+  if (/\bhoy\b/.test(normalized)) draft.date = costaRicaToday();
+
+  const categories = getCategories(state).filter((category) => category.kind === draft.type);
+  const category = inferDraftCategory(question, categories);
+  if (category) draft.category = category.id;
+
+  const merchant = findMerchantInMessage(question, Boolean(existing));
+  if (merchant) draft.merchant = merchant;
+
+  const missing = [
+    !draft.amount && "el monto (por ejemplo ₡5000)",
+    !draft.date && "la fecha (por ejemplo hoy)",
+    !draft.merchant && "el comercio o fuente",
+    !draft.category && "la categoría",
+  ].filter(Boolean);
+  if (missing.length) {
+    drafts[sessionKey] = draft;
+    return {
+      status: "incomplete",
+      message: `Para registrar el ${draft.type === "income" ? "ingreso" : "gasto"} solo me falta ${missing.join(", ")}. Envíame únicamente ese dato; escribe “cancelar” si no quieres continuar.`,
+    };
+  }
+  delete drafts[sessionKey];
+  const categoryName = categories.find((item) => item.id === draft.category)?.name || "Sin categoría";
   return {
     status: "ready",
-    categoryName: category.name,
-    data: { type: "expense", amount, date, merchant, category: category.id },
+    categoryName,
+    data: { type: draft.type, amount: draft.amount, date: draft.date, merchant: draft.merchant, category: draft.category },
   };
+}
+
+async function requestCreateConfirmation(chatId, state, sessionKey, createRequest) {
+  const actionId = makeActionId();
+  state.agentMemory.pendingActions[sessionKey] = {
+    id: actionId,
+    type: "create_movement",
+    action: { type: "create_movement", data: createRequest.data },
+    createdAt: new Date().toISOString(),
+  };
+  await saveState(state);
+  return sendMessage(chatId,
+    [
+      "⚠️ Antes de guardar necesito tu autorización.",
+      "",
+      `🛒 ${createRequest.data.merchant}`,
+      `💰 CRC ${Number(createRequest.data.amount).toFixed(2)} · 📅 ${createRequest.data.date}`,
+      `🏷️ ${createRequest.categoryName}`,
+      "",
+      "¿Quieres que lo agregue al historial?",
+    ].join("\n"),
+    [[
+      { text: "✅ Sí, agregar", callback_data: `act:confirm:${actionId}` },
+      { text: "❌ Cancelar", callback_data: `act:cancel:${actionId}` },
+    ]]);
+}
+
+function inferDraftCategory(question, categories) {
+  const text = normalize(question);
+  const match = categories.find((item) => normalize(item.name) && (text.includes(normalize(item.name)) || (item.keywords || []).some((word) => text.includes(normalize(word)))));
+  return match || null;
+}
+
+function findMerchantInMessage(text, allowSingleValue) {
+  const direct = String(text || "").match(/\ben\s+([\p{L}][\p{L}\s.'’-]*?)(?:\s*,|\s+(?:alimentacion|alimentación|comida|gasto|categoria|categoría)\b|$)/iu);
+  if (direct) return direct[1].trim();
+  const value = String(text || "").trim();
+  if (allowSingleValue && value.length >= 3 && value.length <= 50 && /^[\p{L}\s.'’-]+$/u.test(value) &&
+    !/(hoy|ayer|cancelar|si|sí|no|correo|email|make|leer|lee|porfa|puedes)/i.test(value)) return value;
+  return "";
 }
 
 function extractMovementAmount(value) {

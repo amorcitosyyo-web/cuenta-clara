@@ -48,6 +48,7 @@ module.exports = async function handler(req, res) {
     res.status(200).json({
       items: [],
       agentProcessed: true,
+      received: items.length,
       processed: Number(agentPayload.processed || 0),
       autoAccepted: Number(agentPayload.autoAccepted?.length || 0),
       pending: Number(agentPayload.pending?.length || 0),
