@@ -1,8 +1,8 @@
+const { processInboxItems } = require("./agent-inbox");
+
 async function runEmailAgentSync({ existingSourceIds = [], userId = "", email = "", baseUrl }) {
   const makeUrl = process.env.MAKE_EMAIL_WEBHOOK_URL;
   if (!makeUrl) throw new Error("Falta configurar MAKE_EMAIL_WEBHOOK_URL en Vercel.");
-  if (!process.env.AGENT_INGEST_TOKEN) throw new Error("Falta configurar AGENT_INGEST_TOKEN en Vercel.");
-  if (!baseUrl) throw new Error("No se pudo determinar el dominio de Cuenta Clara.");
 
   const makeResponse = await fetch(makeUrl, {
     method: "POST",
@@ -15,17 +15,8 @@ async function runEmailAgentSync({ existingSourceIds = [], userId = "", email = 
   const makePayload = await readPayload(makeResponse);
   if (!makeResponse.ok) throw new Error(makePayload.error || "Make no pudo leer el correo.");
 
-  const agentResponse = await fetch(`${baseUrl}/api/agent-inbox`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Cuenta-Clara-Agent-Token": process.env.AGENT_INGEST_TOKEN,
-    },
-    body: JSON.stringify({ items: normalizeItems(makePayload) }),
-  });
-  const agentPayload = await readPayload(agentResponse);
-  if (!agentResponse.ok) throw new Error(agentPayload.error || "El agente no pudo procesar el correo.");
-  return agentPayload;
+  const result = await processInboxItems(normalizeItems(makePayload), userId);
+  return { ok: true, ...result, processed: result.autoAccepted.length + result.pending.length };
 }
 
 async function readPayload(response) {

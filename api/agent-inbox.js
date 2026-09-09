@@ -27,51 +27,7 @@ module.exports = async function handler(req, res) {
   try {
     const body = await readJsonBody(req);
     const rawItems = Array.isArray(body.items) ? body.items : Array.isArray(body) ? body : [body];
-    const userId = process.env.AGENT_OWNER_USER_ID;
-    const state = await getAppState(userId);
-    const known = new Set([
-      ...state.movements.map((item) => item.sourceId).filter(Boolean),
-      ...state.pendingMovements.map((item) => item.sourceId).filter(Boolean),
-    ]);
-    const result = { autoAccepted: [], pending: [], duplicates: [], ignored: [] };
-
-    for (const raw of rawItems) {
-      const merchant = String(raw?.merchant || raw?.comercio || raw?.name || "").trim();
-      if (!merchant) {
-        result.ignored.push({ reason: "Sin comercio" });
-        continue;
-      }
-      const classification = await classifyIncoming(raw, state);
-      const movement = normalizeIncomingItem(raw, classification);
-      if (!movement.amount) {
-        result.ignored.push({ merchant, reason: "Sin monto" });
-        continue;
-      }
-      if (known.has(movement.sourceId)) {
-        result.duplicates.push({ merchant, sourceId: movement.sourceId });
-        continue;
-      }
-      known.add(movement.sourceId);
-
-      // La pareja no tiene que aprobar cada correo. El agente lo registra
-      // automaticamente y Telegram ofrece una correccion solo si hace falta.
-      // La confianza se muestra en el aviso para que sepan cuando revisar.
-      state.movements.unshift(movement);
-      result.autoAccepted.push(movement);
-    }
-
-    state.agentMemory.recentEvents = [
-      {
-        at: new Date().toISOString(),
-        kind: "email_sync",
-        autoAccepted: result.autoAccepted.length,
-        pending: result.pending.length,
-      },
-      ...state.agentMemory.recentEvents,
-    ].slice(0, 60);
-    await saveAppState(userId, state);
-
-    await notifyTelegram(result, getCategories(state));
+    const result = await processInboxItems(rawItems, process.env.AGENT_OWNER_USER_ID);
     res.status(200).json({ ok: true, ...result, processed: result.autoAccepted.length + result.pending.length });
   } catch (error) {
     console.error(error);
@@ -83,6 +39,46 @@ function isAuthorized(req) {
   const expected = process.env.AGENT_INGEST_TOKEN;
   if (!expected) return false;
   return req.headers["x-cuenta-clara-agent-token"] === expected;
+}
+
+async function processInboxItems(rawItems, userId) {
+  const state = await getAppState(userId);
+  const known = new Set([
+    ...state.movements.map((item) => item.sourceId).filter(Boolean),
+    ...state.pendingMovements.map((item) => item.sourceId).filter(Boolean),
+  ]);
+  const result = { autoAccepted: [], pending: [], duplicates: [], ignored: [] };
+
+  for (const raw of rawItems) {
+    const merchant = String(raw?.merchant || raw?.comercio || raw?.name || "").trim();
+    if (!merchant) {
+      result.ignored.push({ reason: "Sin comercio" });
+      continue;
+    }
+    const classification = await classifyIncoming(raw, state);
+    const movement = normalizeIncomingItem(raw, classification);
+    if (!movement.amount) {
+      result.ignored.push({ merchant, reason: "Sin monto" });
+      continue;
+    }
+    if (known.has(movement.sourceId)) {
+      result.duplicates.push({ merchant, sourceId: movement.sourceId });
+      continue;
+    }
+    known.add(movement.sourceId);
+    state.movements.unshift(movement);
+    result.autoAccepted.push(movement);
+  }
+
+  state.agentMemory.recentEvents = [{
+    at: new Date().toISOString(),
+    kind: "email_sync",
+    autoAccepted: result.autoAccepted.length,
+    pending: result.pending.length,
+  }, ...state.agentMemory.recentEvents].slice(0, 60);
+  await saveAppState(userId, state);
+  await notifyTelegram(result, getCategories(state));
+  return result;
 }
 
 async function readJsonBody(req) {
@@ -136,3 +132,5 @@ async function notifyTelegram(result, categories) {
   lines.push("Si todo está bien, no tienen que hacer nada. Si algo está mal, toquen su botón correspondiente.");
   await sendTelegram(lines.join("\n"), keyboard);
 }
+
+module.exports.processInboxItems = processInboxItems;
