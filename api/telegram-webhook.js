@@ -235,7 +235,10 @@ function detectEmailIntent(question, state) {
   const aliases = Array.isArray(state.agentMemory?.intentAliases) ? state.agentMemory.intentAliases : [];
   const learned = aliases.some((alias) => alias?.action === "read_email" && normalized.includes(normalize(alias.phrase)));
   const direct = /(lee|leer|revisa|revisar|revis[aá]|busca|buscar|trae|traer|actualiza|actualizar|sincroniza|sincronizar).{0,35}(correo|email|bandeja|transferencia|movimiento|banco)/.test(normalized)
-    || /(correo|email|bandeja|transferencia|movimiento).{0,35}(nuevo|nuevos|pendiente|pendientes|banco)/.test(normalized);
+    || /(correo|email|bandeja|transferencia|movimiento).{0,35}(nuevo|nuevos|pendiente|pendientes|banco)/.test(normalized)
+    || /\b(ver|mira|mirar)\b.{0,20}\b(correo|email|bandeja)\b/.test(normalized)
+    || /\b(llama|llamar|llamado|ejecuta|ejecutar).{0,30}\bmake\b/.test(normalized)
+    || /\bmake\b.{0,30}\b(correo|email|bandeja|lee|leer)\b/.test(normalized);
   return { matched: learned || direct };
 }
 
@@ -561,7 +564,7 @@ function findCreateMovementRequest(question, state, history) {
   const userTexts = [...history.filter((entry) => entry.role === "user").map((entry) => entry.text), question];
   const joined = userTexts.join(" ");
   const amount = extractMovementAmount(joined);
-  const date = /\bhoy\b/i.test(normalize(joined)) ? new Date().toISOString().slice(0, 10) : "";
+  const date = /\bhoy\b/i.test(normalize(joined)) ? costaRicaToday() : "";
   const merchant = findMerchantInConversation(userTexts);
   if (!amount || !date || !merchant) return { status: "incomplete" };
 
@@ -591,11 +594,22 @@ function extractMovementAmount(value) {
 
 function findMerchantInConversation(userTexts) {
   const ignored = new Set(["porfa", "por favor", "agregalo", "agregalo porfa", "quiero que tu lo agregues", "quiero que tú lo agregues"]);
+  const detail = [...userTexts].reverse().find((value) => extractMovementAmount(value) && /\ben\s+/i.test(String(value || "")));
+  const directMatch = String(detail || "").match(/\ben\s+([\p{L}][\p{L}\s.'’-]*?)(?:\s*,|\s+(?:alimentacion|alimentación|comida|gasto|categoria|categoría)\b|$)/iu);
+  if (directMatch) return directMatch[1].trim();
   const single = [...userTexts].reverse().map((value) => String(value || "").trim()).find((value) =>
-    value.length >= 3 && value.length <= 50 && /^[\p{L}\s.'’-]+$/u.test(value) && !ignored.has(normalize(value)));
+    value.length >= 3 && value.length <= 50 && /^[\p{L}\s.'’-]+$/u.test(value) &&
+      !ignored.has(normalize(value)) && !/(correo|email|make|leer|lee|porfa|puedes)/.test(normalize(value)));
   if (single) return single;
   const match = userTexts.join(" ").match(/(?:en|de|para)\s+([\p{L}][\p{L}\s.'’-]{2,50})/u);
   return match ? match[1].trim() : "";
+}
+
+function costaRicaToday() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Costa_Rica", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date()).reduce((result, part) => ({ ...result, [part.type]: part.value }), {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function parseLooseMoney(value) {
