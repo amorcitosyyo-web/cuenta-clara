@@ -83,12 +83,11 @@ function updateCategory(state, action) {
 }
 
 function deleteCategory(state, action) {
-  if (["imprevistos", "ingreso"].includes(action.id)) throw new Error("Esa categoría protegida no se puede eliminar.");
-  const categories = getCategories(state);
-  if (!categories.some((item) => item.id === action.id)) throw new Error("No encontré esa categoría.");
+  const category = state.customCategories.find((item) => item.id === action.id);
+  if (!category) throw new Error("Solo se pueden eliminar categorías personalizadas.");
   state.customCategories = state.customCategories.filter((item) => item.id !== action.id);
   state.movements.forEach((movement) => { if (movement.category === action.id) movement.category = "imprevistos"; });
-  return { state, result: { id: action.id } };
+  return { state, result: category };
 }
 
 function setBudget(state, action) {

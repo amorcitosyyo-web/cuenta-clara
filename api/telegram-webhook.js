@@ -1197,7 +1197,12 @@ function findOperationalAction(question, state) {
     return { status: "ready", action: { type: "create_category", name, kind }, preview: `Crearé la categoría de ${kind === "income" ? "ingresos" : "gastos"}: “${name}”.` };
   }
   const categoryToDelete = findCategoryAfterAction(question, categories, /(elimina|eliminar|borra|borrar).{0,20}categoria/);
-  if (categoryToDelete) return { status: "ready", action: { type: "delete_category", id: categoryToDelete.id }, preview: `Eliminaré la categoría “${categoryToDelete.name}”. Sus movimientos pasarán a Imprevistos.` };
+  if (categoryToDelete) {
+    if (!state.customCategories.some((item) => item.id === categoryToDelete.id)) {
+      return { status: "info", message: `“${categoryToDelete.name}” es una categoría base y está protegida. Solo se pueden eliminar categorías personalizadas.` };
+    }
+    return { status: "ready", action: { type: "delete_category", id: categoryToDelete.id }, preview: `Eliminaré la categoría personalizada “${categoryToDelete.name}”. Sus movimientos pasarán a Imprevistos.` };
+  }
   const renameCategory = question.match(/(?:cambia|cambiar|renombra|renombrar|edita|editar)\s+(?:la\s+)?categor[ií]a\s+(.+?)\s+(?:a|por)\s+(.+)$/i);
   if (renameCategory) {
     const current = categories.find((item) => normalize(item.name) === normalize(renameCategory[1]));
@@ -1220,11 +1225,18 @@ function findOperationalAction(question, state) {
     return { status: "ready", action: { type: "create_saving_goal", name, target: amount }, preview: `Crearé la meta “${name}” con objetivo de CRC ${amount.toFixed(2)}.` };
   }
   const savingGoal = findSavingFromText(question, state);
-  if (savingGoal && /(elimina|eliminar|borra|borrar).{0,30}(meta|ahorro)|(?:meta|ahorro).{0,30}(elimina|eliminar|borra|borrar)/.test(text)) {
+  const deleteGoalRequested = /(elimina|eliminar|borra|borrar).{0,30}(meta|ahorro)|(?:meta|ahorro).{0,30}(elimina|eliminar|borra|borrar)/.test(text);
+  if (savingGoal && deleteGoalRequested) {
     return { status: "ready", action: { type: "delete_saving_goal", id: savingGoal.id }, preview: `Eliminaré la meta “${savingGoal.name}” y sus movimientos de ahorro asociados.` };
+  }
+  if (!savingGoal && deleteGoalRequested) {
+    return { status: "incomplete", message: "¿Cuál meta quieres eliminar? Dime el nombre exacto. Antes de eliminarla te mostraré el impacto y pediré confirmación." };
   }
   if (savingGoal && amount && /(cambia|cambiar|actualiza|actualizar|edita|editar).{0,35}(meta|objetivo|ahorro)/.test(text)) {
     return { status: "ready", action: { type: "update_saving_goal", id: savingGoal.id, target: amount }, preview: `El objetivo de “${savingGoal.name}” quedará en CRC ${amount.toFixed(2)}.` };
+  }
+  if (/(cambia|cambiar|actualiza|actualizar|edita|editar).{0,35}(meta|objetivo|ahorro)/.test(text) && (!savingGoal || !amount)) {
+    return { status: "incomplete", message: "Para actualizar una meta dime cuál es y su nuevo objetivo. Ejemplo: “cambia la meta Viaje a ₡600.000”. Te mostraré el resumen antes de guardarlo." };
   }
   if (/(muestra|muestrame|ver|como van|cómo van).{0,30}(ahorro|ahorros|meta|metas)/.test(text)) return { status: "info", message: summarizeSavings(state) };
   const savingVerb = /(ahorra|ahorrar|deposita|depositar|mete|meter|retira|retirar|saca|sacar)/.test(text);
