@@ -179,6 +179,12 @@ async function replyAsAgent(message, text, request = null) {
     await saveState(state);
     return sendMessage(chatId, reply);
   }
+  if (isImportedMovementsQuestion(question)) {
+    const reply = summarizeImportedMovements(state);
+    rememberConversation(state, sessionKey, question, reply);
+    await saveState(state);
+    return sendMessage(chatId, reply);
+  }
 
   const emailIntent = detectEmailIntent(question, state);
   if (emailIntent.matched) {
@@ -275,6 +281,19 @@ function summarizeMonthMovements(state) {
   const lines = expenses.slice(0, 10).map((item) => `• ${item.date} · ${item.merchant || "Sin comercio"}: CRC ${Number(item.amount || 0).toFixed(2)}`);
   const total = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   return `Movimientos de ${month}:\n${lines.join("\n") || "No hay gastos."}\n\nTotal de gastos del mes: CRC ${total.toFixed(2)}.`;
+}
+
+function isImportedMovementsQuestion(question) {
+  const text = normalize(question);
+  return /(otros|todos|lista|muestrame|muestra|ver).{0,45}(gasto|gastos|movimiento|movimientos|correo|import)/.test(text) &&
+    /(pasaste|llegaron|import|correo|otros|todos|lista)/.test(text);
+}
+
+function summarizeImportedMovements(state) {
+  const items = (state.movements || []).filter((item) => item.source === "gmail").slice(0, 20);
+  if (!items.length) return "No encuentro movimientos importados desde correo todavía.";
+  const lines = items.map((item, index) => `${index + 1}. ${item.date} · ${item.merchant || "Sin comercio"}: CRC ${Number(item.amount || 0).toFixed(2)}`);
+  return `Estos son los ${items.length} movimientos importados más recientes:\n${lines.join("\n")}`;
 }
 
 function uniqueAliases(items, limit) {
@@ -493,8 +512,11 @@ async function handleCallback(query) {
     const pending = state.pendingMovements.find((item) => item.id === id);
     const movement = pending || state.movements.find((item) => item.id === id);
     if (!movement) return answerCallback(query.id, "No encontre ese movimiento.");
-    await editMessage(query.message.chat.id, query.message.message_id,
-      "Elige una nueva categoria para " + movement.merchant + ":", buildCategoryButtons(categories, movement, pending ? "p" : "m"));
+    // No editar el reporte original: contiene todos los movimientos y sus
+    // botones. La elección abre una tarjeta nueva y compacta para que la
+    // persona pueda volver al listado y corregir más de uno.
+    await sendMessage(query.message.chat.id,
+      "Elige una nueva categoría para " + movement.merchant + ":", buildCategoryButtons(categories, movement, pending ? "p" : "m"));
     await answerCallback(query.id, "Elige una categoria.");
     return;
   }
@@ -511,11 +533,34 @@ async function handleCallback(query) {
       state.pendingMovements = state.pendingMovements.filter((entry) => entry.id !== id);
       state.movements.unshift(item);
     }
+    const report = (state.agentMemory.telegramReports || []).find((entry) =>
+      String(entry.chatId) === String(query.message.chat.id) && (entry.entries || []).some((entryItem) => entryItem.id === id));
+    if (report) {
+      report.correctedIds = Array.from(new Set([...(report.correctedIds || []), id]));
+    }
     await saveState(state);
+    if (report) {
+      await editReplyMarkup(report.chatId, report.messageId, buildReportKeyboard(state, report));
+    }
     await editMessage(query.message.chat.id, query.message.message_id,
       "Listo. " + item.merchant + " quedo como " + categoryName(categoryId) + ".", []);
     await answerCallback(query.id, "Movimiento actualizado.");
   }
+}
+
+function buildReportKeyboard(state, report) {
+  const all = [...(state.movements || []), ...(state.pendingMovements || [])];
+  const corrected = new Set(report.correctedIds || []);
+  return (report.entries || []).map((entry) => {
+    const movement = all.find((item) => item.id === entry.id);
+    const label = corrected.has(entry.id)
+      ? `✅ Corregido · ${entry.index}. ${entry.merchant}`
+      : `✏️ Cambiar categoría · ${entry.index}. ${entry.merchant}`;
+    return [{
+      text: label.slice(0, 64),
+      callback_data: `cc:change:${movement && state.pendingMovements.some((item) => item.id === movement.id) ? "p" : "m"}:${entry.id}`,
+    }];
+  });
 }
 
 async function handleActionCallback(query, state) {
@@ -790,6 +835,14 @@ function editMessage(chatId, messageId, text, keyboard) {
     message_id: messageId,
     text,
     reply_markup: keyboard.length ? { inline_keyboard: keyboard } : { inline_keyboard: [] },
+  });
+}
+
+function editReplyMarkup(chatId, messageId, keyboard) {
+  return telegram("editMessageReplyMarkup", {
+    chat_id: chatId,
+    message_id: messageId,
+    reply_markup: { inline_keyboard: keyboard },
   });
 }
 

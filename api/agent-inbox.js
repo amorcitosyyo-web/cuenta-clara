@@ -77,7 +77,11 @@ async function processInboxItems(rawItems, userId) {
     pending: result.pending.length,
   }, ...state.agentMemory.recentEvents].slice(0, 60);
   await saveAppState(userId, state);
-  await notifyTelegram(result, getCategories(state));
+  const report = await notifyTelegram(result, getCategories(state));
+  if (report) {
+    state.agentMemory.telegramReports = [...(state.agentMemory.telegramReports || []), report].slice(-12);
+    await saveAppState(userId, state);
+  }
   return result;
 }
 
@@ -130,7 +134,16 @@ async function notifyTelegram(result, categories) {
     }]);
   });
   lines.push("Si todo está bien, no tienen que hacer nada. Si algo está mal, toquen su botón correspondiente.");
-  await sendTelegram(lines.join("\n"), keyboard);
+  const sent = await sendTelegram(lines.join("\n"), keyboard);
+  const message = sent?.result;
+  if (!message?.message_id || !message?.chat?.id) return null;
+  return {
+    chatId: String(message.chat.id),
+    messageId: message.message_id,
+    entries: movements.map((movement, index) => ({ id: movement.id, merchant: movement.merchant, index: index + 1 })),
+    correctedIds: [],
+    createdAt: new Date().toISOString(),
+  };
 }
 
 module.exports.processInboxItems = processInboxItems;

@@ -73,6 +73,7 @@ function normalizeState(data) {
       pendingIntents: {},
       pendingActions: {},
       movementDrafts: {},
+      telegramReports: [],
       chatHistory: [],
       telegramSessions: {},
       ...state.agentMemory,
@@ -92,6 +93,7 @@ function normalizeState(data) {
         state.agentMemory?.movementDrafts && typeof state.agentMemory.movementDrafts === "object" && !Array.isArray(state.agentMemory.movementDrafts)
           ? state.agentMemory.movementDrafts
           : {},
+      telegramReports: Array.isArray(state.agentMemory?.telegramReports) ? state.agentMemory.telegramReports.slice(-12) : [],
       chatHistory: Array.isArray(state.agentMemory?.chatHistory) ? state.agentMemory.chatHistory : [],
       telegramSessions:
         state.agentMemory?.telegramSessions &&
