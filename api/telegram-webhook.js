@@ -54,6 +54,30 @@ function isAllowedMessage(message) {
     values("TELEGRAM_ALLOWED_USER_IDS").includes(String(message.from && message.from.id || ""));
 }
 
+function isMenuRequest(question) {
+  const text = normalize(question);
+  return /(^|\b)(menu|ayuda|opciones|comandos)(\b|$)/.test(text) ||
+    /(que|cuales|dime).{0,18}(puedes hacer|puedo pedirte|opciones)/.test(text);
+}
+
+function sendAgentMenu(chatId) {
+  return sendMessage(chatId,
+    [
+      "📋 Menú de Cuenta Clara",
+      "",
+      "Elige una opción o escríbeme con tus propias palabras. No necesitas seguir el menú para que te entienda.",
+      "",
+      "También puedes enviarme una foto de una factura o comprobante y la analizo antes de guardar nada.",
+    ].join("\n"),
+    [
+      [{ text: "📬 Leer correo", callback_data: "menu:email" }],
+      [{ text: "📊 Resumen del mes", callback_data: "menu:month" }, { text: "📅 Pagos pendientes", callback_data: "menu:scheduled" }],
+      [{ text: "➕ Agregar gasto o ingreso", callback_data: "menu:add" }, { text: "📥 Ver gastos importados", callback_data: "menu:imports" }],
+      [{ text: "📷 Analizar factura", callback_data: "menu:photo" }, { text: "🎯 Metas y ahorros", callback_data: "menu:goals" }],
+      [{ text: "✏️ Corregir o eliminar", callback_data: "menu:edit" }],
+    ]);
+}
+
 async function handleMessage(message, request = null) {
   const chatId = message.chat.id;
   if (Array.isArray(message.photo) && message.photo.length) {
@@ -72,15 +96,14 @@ async function handleMessage(message, request = null) {
   const text = String(message.text || "").trim();
   if (!text) return;
   if (/^\/start(?:@\w+)?$/i.test(text)) {
-    return sendMessage(chatId,
+    await sendMessage(chatId,
       "Hola, soy Cuenta Clara. Puedo revisar gastos, ingresos y presupuestos, aprender sus correcciones y avisarles cuando algo necesite confirmacion.\n\n" +
       "Escribanme como si hablaran con una persona. Tambien acepto notas de voz.\n" +
-      "Comandos utiles: /ayuda, /recuerda [dato], /meta [objetivo], /limpiar.");
+      "Escribe /menu cuando quieras ver todas las opciones.");
+    return sendAgentMenu(chatId);
   }
-  if (/^\/ayuda(?:@\w+)?$/i.test(text)) {
-    return sendMessage(chatId,
-      "Pueden preguntarme: “como vamos este mes?”, “analiza julio 2026”, “ayudanos a hacer presupuesto” o “que categoria es este gasto?”.\n\n" +
-      "No cambio gastos, categorias ni presupuestos sin confirmar. Con /recuerda guardo una regla o preferencia y con /meta una meta financiera.");
+  if (/^\/(?:ayuda|menu)(?:@\w+)?$/i.test(text)) {
+    return sendAgentMenu(chatId);
   }
   if (/^\/limpiar(?:@\w+)?$/i.test(text)) {
     const state = await getState();
@@ -128,6 +151,8 @@ async function replyAsAgent(message, text, request = null) {
     await saveState(state);
     return sendMessage(chatId, "Listo, no hice ningún cambio.");
   }
+
+  if (isMenuRequest(question)) return sendAgentMenu(chatId);
 
   if (isScheduledPaymentsQuestion(question)) {
     const reply = summarizeScheduledPayments(state);
@@ -580,7 +605,8 @@ async function handleCallback(query) {
   const scope = parts[2];
   const id = parts[3];
   const categoryId = parts[4];
-  if (!["cc", "act"].includes(prefix) || !process.env.AGENT_OWNER_USER_ID) return;
+  if (!["cc", "act", "menu"].includes(prefix) || !process.env.AGENT_OWNER_USER_ID) return;
+  if (prefix === "menu") return handleMenuCallback(query, action);
   const state = await getState();
   const categories = getCategories(state);
   const categoryName = (value) => categories.find((category) => category.id === value)?.name || "Sin categoria";
@@ -643,6 +669,38 @@ async function handleCallback(query) {
       "Listo. " + item.merchant + " quedo como " + categoryName(categoryId) + ".", []);
     await answerCallback(query.id, "Movimiento actualizado.");
   }
+}
+
+async function handleMenuCallback(query, action) {
+  const chatId = query.message.chat.id;
+  const message = { chat: query.message.chat };
+  const actions = {
+    email: { text: "lee el correo", notice: "Revisando correo..." },
+    month: { text: "qué gastos tenemos este mes", notice: "Preparando el resumen..." },
+    scheduled: { text: "qué pagos programados están pendientes este mes", notice: "Revisando pagos..." },
+    imports: { text: "muéstrame los otros gastos importados", notice: "Buscando movimientos..." },
+    goals: { text: "muéstrame mis metas y ahorros", notice: "Revisando metas..." },
+  };
+  if (actions[action]) {
+    await answerCallback(query.id, actions[action].notice);
+    return replyAsAgent(message, actions[action].text);
+  }
+  if (action === "add") {
+    await answerCallback(query.id, "Listo.");
+    return sendMessage(chatId,
+      "➕ Dime el gasto o ingreso en una frase. Por ejemplo:\n\n“Hoy ₡5.000 en Automercado, alimentación. Agrégalo”.\n\nTe pediré lo que falte y siempre confirmaré antes de guardarlo.");
+  }
+  if (action === "photo") {
+    await answerCallback(query.id, "Envíame la foto.");
+    return sendMessage(chatId,
+      "📷 Envíame una foto clara de la factura, recibo o comprobante. Extraeré comercio, fecha, monto y una categoría sugerida; no la guardaré sin tu confirmación.");
+  }
+  if (action === "edit") {
+    await answerCallback(query.id, "Te explico.");
+    return sendMessage(chatId,
+      "✏️ Para corregir una categoría, toca “Cambiar categoría” en la lista importada. Para eliminar, escribe por ejemplo: “elimina el gasto de ₡5.000 en Automercado”. Siempre te pediré confirmación antes de modificar algo.");
+  }
+  return answerCallback(query.id, "Opción no disponible.");
 }
 
 function buildReportKeyboard(state, report) {
@@ -943,8 +1001,12 @@ function editReplyMarkup(chatId, messageId, keyboard) {
   });
 }
 
-function sendMessage(chatId, text) {
-  return telegram("sendMessage", { chat_id: chatId, text });
+function sendMessage(chatId, text, keyboard = []) {
+  return telegram("sendMessage", {
+    chat_id: chatId,
+    text,
+    ...(keyboard.length ? { reply_markup: { inline_keyboard: keyboard } } : {}),
+  });
 }
 
 function sendChatAction(chatId, action) {
