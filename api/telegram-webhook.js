@@ -2,7 +2,7 @@ const { getAppState, getCategories, learnRule, saveAppState } = require("./_agen
 const { APP_KNOWLEDGE } = require("./app-knowledge");
 const { runEmailAgentSync } = require("./email-agent-sync");
 const { executeAction } = require("./action-tools");
-const { financialReport, reportText } = require("./reporting");
+const { financialReport, reportText, money } = require("./reporting");
 const { buildFinancialPdf } = require("./report-pdf");
 
 const MONTHS = {
@@ -123,6 +123,7 @@ async function handleMessage(message, request = null) {
     const state = await getState();
     delete state.agentMemory.telegramSessions[String(chatId)];
     delete state.agentMemory.pendingIntents[String(chatId)];
+    delete state.agentMemory.pendingQueries[String(chatId)];
     delete state.agentMemory.pendingActions[String(chatId)];
     delete state.agentMemory.movementDrafts[String(chatId)];
     await saveState(state);
@@ -155,6 +156,7 @@ async function replyAsAgent(message, text, request = null) {
   const history = Array.isArray(sessions[sessionKey]) ? sessions[sessionKey] : [];
   const pendingIntents = state.agentMemory.pendingIntents || {};
   const pendingIntentPhrase = pendingIntents[sessionKey] || "";
+  const pendingQueries = state.agentMemory.pendingQueries || {};
 
   const pendingAction = state.agentMemory.pendingActions?.[sessionKey];
   if (pendingAction && /^(si|sí|confirmo|confirmar|hazlo|dale|ok|okay|acepto)$/i.test(normalize(question))) {
@@ -182,6 +184,29 @@ async function replyAsAgent(message, text, request = null) {
   }
 
   if (isMenuRequest(question)) return sendAgentMenu(chatId);
+
+  // A reply such as “mes actual” belongs to the question which asked for a
+  // period. Keep that question explicitly instead of handing the short reply
+  // to the model as a new, unrelated request.
+  const requestedPeriod = parsePeriod(question);
+  const pendingQuery = pendingQueries[sessionKey];
+  if (pendingQuery && requestedPeriod && isPeriodOnlyReply(question)) {
+    delete pendingQueries[sessionKey];
+    const answer = await answerPeriodFollowup(pendingQuery.question, state, requestedPeriod, history);
+    rememberConversation(state, sessionKey, question, answer);
+    await saveState(state);
+    return sendMessage(chatId, answer);
+  }
+  if (pendingQuery && !isPeriodOnlyReply(question)) delete pendingQueries[sessionKey];
+
+  // When someone replies to the budget card, “¿cómo vamos con este gasto?”
+  // means the current month's budget progress, not scheduled payments.
+  if (isBudgetCardFollowup(message, question)) {
+    const reply = summarizeBudgetProgress(state, getCategories(state));
+    rememberConversation(state, sessionKey, question, reply);
+    await saveState(state);
+    return sendMessage(chatId, reply);
+  }
 
   const reportRequest = findReportRequest(question);
   if (reportRequest) return sendFinancialReport(chatId, state, reportRequest.kind, reportRequest.month);
@@ -303,8 +328,10 @@ async function replyAsAgent(message, text, request = null) {
   }
 
   const requiredPeriod = needsPeriod(question);
-  const period = parsePeriod(question);
+  const period = requestedPeriod;
   if (requiredPeriod && !period) {
+    pendingQueries[sessionKey] = { question, createdAt: new Date().toISOString() };
+    await saveState(state);
     return sendMessage(chatId, "Claro. Para revisarlo bien, dime el periodo: por ejemplo “julio 2026”, “los ultimos 5 dias” o un rango de fechas.");
   }
 
@@ -457,6 +484,23 @@ function parsePeriod(text) {
     return monthPeriod(today.getFullYear(), today.getMonth(), "mes actual");
   }
   return null;
+}
+
+function isPeriodOnlyReply(text) {
+  const normalized = normalize(text).trim();
+  return /^(este mes|mes actual|hoy|los ultimos? \d+ dias?|\d{1,2}[/-]\d{1,2}[/-]20\d{2}|(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)(?: \d{4})?)$/.test(normalized);
+}
+
+async function answerPeriodFollowup(originalQuestion, state, period, history) {
+  const original = normalize(originalQuestion);
+  if (/(presupuesto|gasto|como vamos|que tal)/.test(original)) return summarizeBudgetProgress(state, getCategories(state), period);
+  return askAdvisor(originalQuestion, state, period, history);
+}
+
+function isBudgetCardFollowup(message, question) {
+  const quoted = String(message.reply_to_message?.text || message.reply_to_message?.caption || "");
+  const text = normalize(question);
+  return /(presupuesto|presupuestos)/.test(normalize(quoted)) && /(que tal|como vamos|este gasto|este presupuesto|como va)/.test(text);
 }
 
 function monthPeriod(year, month, label) {
@@ -1267,6 +1311,24 @@ function summarizeBudgets(state, categories) {
   return rows.length ? `Presupuestos del mes actual:\n${rows.join("\n")}` : "No hay presupuestos definidos todavía.";
 }
 
+function summarizeBudgetProgress(state, categories, period = null) {
+  const month = period?.start instanceof Date
+    ? `${period.start.getFullYear()}-${String(period.start.getMonth() + 1).padStart(2, "0")}`
+    : costaRicaToday().slice(0, 7);
+  const spentByCategory = (state.movements || [])
+    .filter((movement) => movement.type === "expense" && String(movement.date || "").startsWith(month))
+    .reduce((result, movement) => ({ ...result, [movement.category]: (result[movement.category] || 0) + Number(movement.amount || 0) }), {});
+  const rows = Object.entries(state.budgets || {}).map(([id, limit]) => {
+    const spent = spentByCategory[id] || 0;
+    const name = categories.find((category) => category.id === id)?.name || id;
+    const remaining = Number(limit || 0) - spent;
+    return `• ${name}: ${money(spent)} de ${money(limit)}${remaining < 0 ? ` · ⚠️ excedido por ${money(Math.abs(remaining))}` : ` · quedan ${money(remaining)}`}`;
+  });
+  return rows.length
+    ? `📊 Presupuesto vs. gasto · ${month}\n\n${rows.join("\n")}`
+    : `No hay presupuestos definidos para ${month}.`;
+}
+
 function summarizeSavings(state) {
   const accounts = state.savingsAccounts || [];
   if (!accounts.length) return "No hay metas de ahorro creadas todavía.";
@@ -1409,6 +1471,7 @@ async function getState() {
   state.agentMemory.telegramSessions = state.agentMemory.telegramSessions || {};
   state.agentMemory.pendingActions = state.agentMemory.pendingActions || {};
   state.agentMemory.pendingIntents = state.agentMemory.pendingIntents || {};
+  state.agentMemory.pendingQueries = state.agentMemory.pendingQueries || {};
   return state;
 }
 

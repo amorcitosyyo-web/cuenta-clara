@@ -71,6 +71,7 @@ function normalizeState(data) {
       recentEvents: [],
       intentAliases: [],
       pendingIntents: {},
+      pendingQueries: {},
       pendingActions: {},
       movementDrafts: {},
       telegramReports: [],
@@ -84,6 +85,10 @@ function normalizeState(data) {
       pendingIntents:
         state.agentMemory?.pendingIntents && typeof state.agentMemory.pendingIntents === "object" && !Array.isArray(state.agentMemory.pendingIntents)
           ? state.agentMemory.pendingIntents
+          : {},
+      pendingQueries:
+        state.agentMemory?.pendingQueries && typeof state.agentMemory.pendingQueries === "object" && !Array.isArray(state.agentMemory.pendingQueries)
+          ? state.agentMemory.pendingQueries
           : {},
       pendingActions:
         state.agentMemory?.pendingActions && typeof state.agentMemory.pendingActions === "object" && !Array.isArray(state.agentMemory.pendingActions)
