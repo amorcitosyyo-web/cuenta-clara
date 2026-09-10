@@ -56,6 +56,9 @@ function isAllowedMessage(message) {
 
 async function handleMessage(message, request = null) {
   const chatId = message.chat.id;
+  if (Array.isArray(message.photo) && message.photo.length) {
+    return analyzeTelegramImage(message, String(message.caption || "").trim());
+  }
   if (message.voice || message.audio) {
     await sendChatAction(chatId, "typing");
     const transcript = await transcribeVoice(message.voice || message.audio);
@@ -124,6 +127,28 @@ async function replyAsAgent(message, text, request = null) {
     delete state.agentMemory.pendingActions[sessionKey];
     await saveState(state);
     return sendMessage(chatId, "Listo, no hice ningún cambio.");
+  }
+
+  if (isScheduledPaymentsQuestion(question)) {
+    const reply = summarizeScheduledPayments(state);
+    rememberConversation(state, sessionKey, question, reply);
+    await saveState(state);
+    return sendMessage(chatId, reply);
+  }
+
+  const paidScheduled = findPaidScheduledPayment(question, state);
+  if (paidScheduled) {
+    const actionId = makeActionId();
+    state.agentMemory.pendingActions[sessionKey] = {
+      id: actionId, type: "mark_scheduled_paid",
+      action: { type: "mark_scheduled_paid", id: paidScheduled.id, month: costaRicaToday().slice(0, 7) },
+      createdAt: new Date().toISOString(),
+    };
+    await saveState(state);
+    return sendMessage(chatId, `¿Confirmas que marque “${paidScheduled.name}” como pagado este mes?`, [[
+      { text: "✅ Sí, marcar pagado", callback_data: `act:confirm:${actionId}` },
+      { text: "❌ Cancelar", callback_data: `act:cancel:${actionId}` },
+    ]]);
   }
 
   const draftResult = handleMovementDraft(question, state, sessionKey);
@@ -246,6 +271,33 @@ function isTodayMovementsQuestion(question) {
   return /\b(hoy|dia de hoy)\b/.test(text) &&
     /\b(gasto|gastos|movimiento|movimientos|compra|compras|transaccion|transacciones)\b/.test(text) &&
     !/(agrega|agregar|registra|registrar|anota|anotar|elimina|eliminar|borra|borrar)/.test(text);
+}
+
+function isScheduledPaymentsQuestion(question) {
+  const text = normalize(question);
+  return /(gasto|gastos|pago|pagos).{0,25}(programado|programados|pendiente|pendientes)/.test(text) ||
+    /(programado|programados|pendiente|pendientes).{0,25}(gasto|gastos|pago|pagos)/.test(text);
+}
+
+function summarizeScheduledPayments(state) {
+  const month = costaRicaToday().slice(0, 7);
+  const list = (state.scheduledPayments || []).filter((item) => item.active !== false &&
+    (item.repeat === "monthly" || String(item.dueDate || "").startsWith(month)));
+  if (!list.length) return `No hay gastos programados activos para ${month}.`;
+  const pending = list.filter((item) => !(item.paidMonths || []).includes(month));
+  if (!pending.length) return `Todos los ${list.length} pagos programados de ${month} están marcados como pagados.`;
+  return `Pagos programados pendientes de ${month}:\n${pending.map((item) => `• ${item.name}: CRC ${Number(item.amount || 0).toFixed(2)} · vence ${item.dueDate || "sin fecha"}`).join("\n")}`;
+}
+
+function findPaidScheduledPayment(question, state) {
+  const text = normalize(question);
+  if (!/(realizado|pagado|ya se pago|ya se pagó)/.test(text)) return null;
+  const candidates = (state.scheduledPayments || []).filter((item) => item.active !== false);
+  return candidates.find((item) => {
+    const name = normalize(item.name);
+    const terms = name.split(/\s+/).filter((term) => term.length > 2);
+    return terms.some((term) => text.includes(term));
+  }) || null;
 }
 
 function isMonthMovementsQuestion(question) {
@@ -473,6 +525,51 @@ async function transcribeVoice(file) {
   } catch (error) {
     console.error("Voice transcription error:", error);
     return "";
+  }
+}
+
+async function analyzeTelegramImage(message, caption) {
+  const chatId = message.chat.id;
+  if (!process.env.OPENAI_API_KEY) return sendMessage(chatId, "No puedo analizar imágenes todavía porque falta configurar OpenAI en Vercel.");
+  try {
+    await sendChatAction(chatId, "typing");
+    const photo = message.photo[message.photo.length - 1];
+    const fileInfo = await telegram("getFile", { file_id: photo.file_id });
+    const filePath = fileInfo?.result?.file_path;
+    if (!filePath) throw new Error("No pude obtener la foto de Telegram.");
+    const imageResponse = await fetch(`https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${filePath}`);
+    if (!imageResponse.ok) throw new Error("No pude descargar la foto.");
+    const mime = imageResponse.headers.get("content-type") || "image/jpeg";
+    const bytes = Buffer.from(await imageResponse.arrayBuffer()).toString("base64");
+    const state = await getState();
+    const categories = getCategories(state).filter((item) => item.kind === "expense").map((item) => item.name);
+    const prompt = [
+      "Analiza la imagen que te envió una persona en Costa Rica.",
+      "Si es una factura, recibo o comprobante, extrae comercio, fecha de compra, total en CRC y una categoría sugerida usando esta lista: " + categories.join(", ") + ".",
+      "No inventes datos ilegibles. Si no es un comprobante, describe brevemente qué ves y responde a la petición del pie de foto si existe.",
+      "No guardes ni modifiques información financiera. Termina preguntando si desea registrar el gasto cuando sea un comprobante.",
+      caption ? `Pie de foto: ${caption}` : "",
+    ].filter(Boolean).join("\n");
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: process.env.OPENAI_VISION_MODEL || "gpt-4.1-mini",
+        max_tokens: 350,
+        temperature: 0.1,
+        messages: [{ role: "user", content: [
+          { type: "text", text: prompt },
+          { type: "image_url", image_url: { url: `data:${mime};base64,${bytes}` } },
+        ] }],
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    const answer = payload?.choices?.[0]?.message?.content;
+    if (!response.ok || !answer) throw new Error(payload?.error?.message || "No pude analizar la imagen.");
+    return sendMessage(chatId, String(answer).trim());
+  } catch (error) {
+    console.error("Telegram image analysis error:", error);
+    return sendMessage(chatId, "No pude analizar esa imagen. Intenta enviarla con más luz, completa y sin recortar los datos importantes.");
   }
 }
 
