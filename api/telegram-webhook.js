@@ -45,13 +45,23 @@ function values(name) {
 }
 
 function isAllowed(query) {
-  return values("TELEGRAM_CHAT_ID").includes(String(query.message && query.message.chat && query.message.chat.id || "")) &&
-    values("TELEGRAM_ALLOWED_USER_IDS").includes(String(query.from && query.from.id || ""));
+  return isAllowedChat(query.message?.chat?.id) && isAllowedUser(query.from?.id);
 }
 
 function isAllowedMessage(message) {
-  return values("TELEGRAM_CHAT_ID").includes(String(message.chat && message.chat.id || "")) &&
-    values("TELEGRAM_ALLOWED_USER_IDS").includes(String(message.from && message.from.id || ""));
+  return isAllowedChat(message.chat?.id) && isAllowedUser(message.from?.id);
+}
+
+function isAllowedChat(chatId) {
+  return values("TELEGRAM_CHAT_ID").includes(String(chatId || ""));
+}
+
+function isAllowedUser(userId) {
+  // La cuenta se usa dentro de un grupo privado identificado por chat ID. Por
+  // defecto cualquier integrante de ese grupo puede operar; la restricción
+  // adicional por IDs solo se aplica si se activa explícitamente en Vercel.
+  if (process.env.TELEGRAM_STRICT_USER_IDS !== "true") return true;
+  return values("TELEGRAM_ALLOWED_USER_IDS").includes(String(userId || ""));
 }
 
 function isMenuRequest(question) {
@@ -72,9 +82,10 @@ function sendAgentMenu(chatId) {
     [
       [{ text: "📬 Leer correo", callback_data: "menu:email" }],
       [{ text: "📊 Resumen del mes", callback_data: "menu:month" }, { text: "📅 Pagos pendientes", callback_data: "menu:scheduled" }],
-      [{ text: "➕ Agregar gasto o ingreso", callback_data: "menu:add" }, { text: "📥 Ver gastos importados", callback_data: "menu:imports" }],
+      [{ text: "➕ Agregar gasto o ingreso", callback_data: "menu:add" }, { text: "📥 Bandeja pendiente", callback_data: "menu:inbox" }],
       [{ text: "📷 Analizar factura", callback_data: "menu:photo" }, { text: "🎯 Metas y ahorros", callback_data: "menu:goals" }],
-      [{ text: "✏️ Corregir o eliminar", callback_data: "menu:edit" }],
+      [{ text: "💰 Presupuestos", callback_data: "menu:budget" }, { text: "🧩 Categorías", callback_data: "menu:categories" }],
+      [{ text: "➕ Pago programado", callback_data: "menu:new-scheduled" }, { text: "✏️ Corregir o eliminar", callback_data: "menu:edit" }],
     ]);
 }
 
@@ -175,6 +186,10 @@ async function replyAsAgent(message, text, request = null) {
       { text: "❌ Cancelar", callback_data: `act:cancel:${actionId}` },
     ]]);
   }
+
+  const operation = findOperationalAction(question, state);
+  if (operation.status === "ready") return requestOperationalConfirmation(chatId, state, sessionKey, operation);
+  if (operation.status === "incomplete" || operation.status === "info") return sendMessage(chatId, operation.message);
 
   const draftResult = handleMovementDraft(question, state, sessionKey);
   if (draftResult.status === "ready") return requestCreateConfirmation(chatId, state, sessionKey, draftResult);
@@ -300,6 +315,7 @@ function isTodayMovementsQuestion(question) {
 
 function isScheduledPaymentsQuestion(question) {
   const text = normalize(question);
+  if (/(crea|crear|agrega|agregar|programa|programar|elimina|eliminar|borra|borrar|realizado|pagado)/.test(text)) return false;
   return /(gasto|gastos|pago|pagos).{0,25}(programado|programados|pendiente|pendientes)/.test(text) ||
     /(programado|programados|pendiente|pendientes).{0,25}(gasto|gastos|pago|pagos)/.test(text);
 }
@@ -333,7 +349,7 @@ function isMonthMovementsQuestion(question) {
 
 function summarizeTodayMovements(state) {
   const today = costaRicaToday();
-  const movements = (state.movements || []).filter((item) => item.date === today && item.type !== "savings");
+  const movements = (state.movements || []).filter((item) => item.date === today && item.type !== "saving");
   if (movements.length) {
     const lines = movements.slice(0, 8).map((item) => `• ${item.merchant || "Sin comercio"}: CRC ${Number(item.amount || 0).toFixed(2)}`);
     const totalExpenses = movements.filter((item) => item.type === "expense").reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -342,7 +358,7 @@ function summarizeTodayMovements(state) {
 
   // Un registro creado antes de corregir la zona horaria puede quedar con la
   // fecha del día siguiente. Se muestra de forma transparente sin cambiarlo.
-  const adjacent = (state.movements || []).filter((item) => item.date && item.date !== today && item.type !== "savings").slice(0, 3);
+  const adjacent = (state.movements || []).filter((item) => item.date && item.date !== today && item.type !== "saving").slice(0, 3);
   if (adjacent.length) {
     const details = adjacent.map((item) => `${item.merchant || "Sin comercio"} (CRC ${Number(item.amount || 0).toFixed(2)}, fecha ${item.date})`).join("; ");
     return `No hay movimientos registrados para hoy (${today}). Sí veo: ${details}. Si alguno corresponde a hoy pero tiene una fecha incorrecta, dímelo y te pediré confirmación antes de corregirlo.`;
@@ -352,7 +368,7 @@ function summarizeTodayMovements(state) {
 
 function summarizeMonthMovements(state) {
   const month = costaRicaToday().slice(0, 7);
-  const movements = (state.movements || []).filter((item) => String(item.date || "").startsWith(month) && item.type !== "savings");
+  const movements = (state.movements || []).filter((item) => String(item.date || "").startsWith(month) && item.type !== "saving");
   const expenses = movements.filter((item) => item.type === "expense");
   if (!movements.length) return `No hay movimientos registrados en ${month}.`;
   const lines = expenses.slice(0, 10).map((item) => `• ${item.date} · ${item.merchant || "Sin comercio"}: CRC ${Number(item.amount || 0).toFixed(2)}`);
@@ -482,7 +498,7 @@ function buildContext(state, period, question) {
   const categories = getCategories(state);
   const all = Array.isArray(state.movements) ? state.movements : [];
   const movements = all.filter((movement) => {
-    if (movement.type === "savings") return false;
+    if (movement.type === "saving") return false;
     if (!period) return false;
     const date = parseMovementDate(movement.date);
     return date && date >= period.start && date <= period.end;
@@ -567,12 +583,13 @@ async function analyzeTelegramImage(message, caption) {
     const mime = imageResponse.headers.get("content-type") || "image/jpeg";
     const bytes = Buffer.from(await imageResponse.arrayBuffer()).toString("base64");
     const state = await getState();
-    const categories = getCategories(state).filter((item) => item.kind === "expense").map((item) => item.name);
+    const categories = getCategories(state).filter((item) => item.kind === "expense");
     const prompt = [
       "Analiza la imagen que te envió una persona en Costa Rica.",
-      "Si es una factura, recibo o comprobante, extrae comercio, fecha de compra, total en CRC y una categoría sugerida usando esta lista: " + categories.join(", ") + ".",
-      "No inventes datos ilegibles. Si no es un comprobante, describe brevemente qué ves y responde a la petición del pie de foto si existe.",
-      "No guardes ni modifiques información financiera. Termina preguntando si desea registrar el gasto cuando sea un comprobante.",
+      "Si es una factura, recibo o comprobante, devuelve SOLO JSON válido con: {isReceipt:boolean,merchant:string,date:string,total:number,category:string,items:[{name:string,quantity:number|null,amount:number|null}],notes:string,confidence:number,description:string}.",
+      "Fecha YYYY-MM-DD, monto final en CRC. Artículos debe incluir nombres y montos legibles. No inventes datos ilegibles; usa null cuando no puedas leer un dato.",
+      "Categorías disponibles: " + categories.map((item) => item.name).join(", ") + ".",
+      "Si no es comprobante, devuelve isReceipt:false y una descripción breve.",
       caption ? `Pie de foto: ${caption}` : "",
     ].filter(Boolean).join("\n");
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -591,11 +608,78 @@ async function analyzeTelegramImage(message, caption) {
     const payload = await response.json().catch(() => ({}));
     const answer = payload?.choices?.[0]?.message?.content;
     if (!response.ok || !answer) throw new Error(payload?.error?.message || "No pude analizar la imagen.");
-    return sendMessage(chatId, String(answer).trim());
+    const parsed = parseReceiptVision(answer);
+    if (!parsed?.isReceipt) return sendMessage(chatId, parsed?.description || "Veo la imagen, pero no parece ser una factura o comprobante financiero.");
+    const category = categoryFromVision(parsed.category, categories);
+    if (!parsed.merchant || !(Number(parsed.total) > 0)) {
+      return sendMessage(chatId, "Pude ver una factura, pero no pude leer con suficiente seguridad el comercio o total. Envíala más nítida o dime esos dos datos.");
+    }
+    const receipt = {
+      source: "telegram", telegramFileId: photo.file_id, analyzedAt: new Date().toISOString(),
+      items: Array.isArray(parsed.items) ? parsed.items.slice(0, 30) : [],
+      note: String(parsed.notes || ""), confidence: Number(parsed.confidence || 0),
+    };
+    const data = {
+      type: "expense", merchant: String(parsed.merchant).trim(), amount: Number(parsed.total),
+      date: /^\d{4}-\d{2}-\d{2}$/.test(String(parsed.date || "")) ? parsed.date : costaRicaToday(),
+      category: category?.id || "imprevistos", note: receiptNote(receipt.items, receipt.note), receipt,
+    };
+    const duplicate = findReceiptDuplicate(data, state);
+    if (duplicate) {
+      const draftId = makeActionId();
+      state.agentMemory.receiptDrafts = state.agentMemory.receiptDrafts || {};
+      state.agentMemory.receiptDrafts[draftId] = { data, duplicateId: duplicate.id, chatId: String(chatId) };
+      await saveState(state);
+      return sendMessage(chatId,
+        `⚠️ Encontré un posible duplicado:\n\n${duplicate.merchant} · CRC ${Number(duplicate.amount).toFixed(2)} · ${duplicate.date}\n\nLa factura tiene el mismo comercio, día y monto. ¿Es el mismo gasto?`, [[
+          { text: "✅ Sí, es el mismo", callback_data: `rc:dupe-yes:${draftId}` },
+          { text: "➕ No, es otro gasto", callback_data: `rc:dupe-no:${draftId}` },
+        ]]);
+    }
+    const { result: created } = executeAction(state, { type: "create_movement", data });
+    await saveState(state);
+    return sendReceiptSaved(chatId, created, categories, "✅ Factura analizada y gasto agregado automáticamente.");
   } catch (error) {
     console.error("Telegram image analysis error:", error);
     return sendMessage(chatId, "No pude analizar esa imagen. Intenta enviarla con más luz, completa y sin recortar los datos importantes.");
   }
+}
+
+function parseReceiptVision(answer) {
+  const text = String(answer || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+  try { return JSON.parse(text); } catch { return null; }
+}
+
+function categoryFromVision(value, categories) {
+  const target = normalize(value);
+  return categories.find((item) => normalize(item.name) === target) ||
+    categories.find((item) => target && (normalize(item.name).includes(target) || target.includes(normalize(item.name)))) || null;
+}
+
+function receiptNote(items, note) {
+  const lines = (items || []).map((item) => {
+    const name = String(item?.name || "").trim();
+    if (!name) return "";
+    const quantity = item.quantity === null || item.quantity === undefined ? "" : ` x${item.quantity}`;
+    const amount = Number(item.amount);
+    return `${name}${quantity}${Number.isFinite(amount) && amount > 0 ? ` — CRC ${amount.toFixed(2)}` : ""}`;
+  }).filter(Boolean);
+  return [String(note || "").trim(), lines.length ? `Artículos: ${lines.join("; ")}` : ""].filter(Boolean).join(" · ");
+}
+
+function findReceiptDuplicate(data, state) {
+  const merchant = normalize(data.merchant);
+  return (state.movements || []).find((item) => item.type === "expense" && item.date === data.date &&
+    Math.abs(Number(item.amount || 0) - Number(data.amount || 0)) < 0.01 &&
+    (normalize(item.merchant) === merchant || normalize(item.merchant).includes(merchant) || merchant.includes(normalize(item.merchant))));
+}
+
+function sendReceiptSaved(chatId, movement, categories, headline) {
+  const category = categories.find((item) => item.id === movement.category)?.name || "Sin categoría";
+  return sendMessage(chatId, `${headline}\n\n🛒 ${movement.merchant}\n💰 CRC ${Number(movement.amount).toFixed(2)} · 📅 ${movement.date}\n🏷️ ${category}\n${movement.note ? `📝 ${movement.note}` : ""}`, [[
+    { text: "✏️ Cambiar categoría", callback_data: `cc:change:m:${movement.id}` },
+    { text: "✏️ Corregir monto o fecha", callback_data: `rc:edit:${movement.id}` },
+  ]]);
 }
 
 async function handleCallback(query) {
@@ -605,8 +689,9 @@ async function handleCallback(query) {
   const scope = parts[2];
   const id = parts[3];
   const categoryId = parts[4];
-  if (!["cc", "act", "menu"].includes(prefix) || !process.env.AGENT_OWNER_USER_ID) return;
+  if (!["cc", "act", "menu", "rc"].includes(prefix) || !process.env.AGENT_OWNER_USER_ID) return;
   if (prefix === "menu") return handleMenuCallback(query, action);
+  if (prefix === "rc") return handleReceiptCallback(query, action, scope);
   const state = await getState();
   const categories = getCategories(state);
   const categoryName = (value) => categories.find((category) => category.id === value)?.name || "Sin categoria";
@@ -671,6 +756,39 @@ async function handleCallback(query) {
   }
 }
 
+async function handleReceiptCallback(query, action, id) {
+  const chatId = query.message.chat.id;
+  const state = await getState();
+  const categories = getCategories(state);
+  if (action === "edit") {
+    const movement = state.movements.find((item) => item.id === id);
+    if (!movement) return answerCallback(query.id, "No encontré ese gasto.");
+    await answerCallback(query.id, "Dime la corrección.");
+    return sendMessage(chatId, `Escribe la corrección en una frase. Por ejemplo:\n“cambia el monto del gasto ${movement.merchant} a ₡4.500”\nó\n“cambia la fecha del gasto ${movement.merchant} a 2026-09-09”.\n\nTe pediré confirmación antes de guardar.`);
+  }
+  const draft = state.agentMemory.receiptDrafts?.[id];
+  if (!draft || String(draft.chatId) !== String(chatId)) return answerCallback(query.id, "Esta revisión ya venció.");
+  if (action === "dupe-yes") {
+    const movement = state.movements.find((item) => item.id === draft.duplicateId);
+    if (!movement) return answerCallback(query.id, "No encontré el gasto original.");
+    movement.receipt = draft.data.receipt;
+    movement.note = [movement.note, draft.data.note].filter(Boolean).join(movement.note && draft.data.note ? " · " : "");
+    delete state.agentMemory.receiptDrafts[id];
+    await saveState(state);
+    await editMessage(chatId, query.message.message_id, `✅ Listo. Adjunté los artículos de la factura al gasto existente de ${movement.merchant}.`, []);
+    return answerCallback(query.id, "Factura añadida al gasto existente.");
+  }
+  if (action === "dupe-no") {
+    const { result: created } = executeAction(state, { type: "create_movement", data: draft.data });
+    delete state.agentMemory.receiptDrafts[id];
+    await saveState(state);
+    await editMessage(chatId, query.message.message_id, "✅ Entendido: era otro gasto. Lo agregué al historial.", []);
+    await sendReceiptSaved(chatId, created, categories, "Detalle de la factura:");
+    return answerCallback(query.id, "Gasto agregado.");
+  }
+  return answerCallback(query.id, "Acción no reconocida.");
+}
+
 async function handleMenuCallback(query, action) {
   const chatId = query.message.chat.id;
   const message = { chat: query.message.chat };
@@ -680,6 +798,9 @@ async function handleMenuCallback(query, action) {
     scheduled: { text: "qué pagos programados están pendientes este mes", notice: "Revisando pagos..." },
     imports: { text: "muéstrame los otros gastos importados", notice: "Buscando movimientos..." },
     goals: { text: "muéstrame mis metas y ahorros", notice: "Revisando metas..." },
+    inbox: { text: "muéstrame pendientes de bandeja", notice: "Revisando Bandeja..." },
+    budget: { text: "muéstrame presupuestos", notice: "Revisando presupuestos..." },
+    categories: { text: "muéstrame categorías", notice: "Revisando categorías..." },
   };
   if (actions[action]) {
     await answerCallback(query.id, actions[action].notice);
@@ -693,7 +814,11 @@ async function handleMenuCallback(query, action) {
   if (action === "photo") {
     await answerCallback(query.id, "Envíame la foto.");
     return sendMessage(chatId,
-      "📷 Envíame una foto clara de la factura, recibo o comprobante. Extraeré comercio, fecha, monto y una categoría sugerida; no la guardaré sin tu confirmación.");
+      "📷 Envíame una foto clara de la factura, recibo o comprobante. Extraeré comercio, fecha, monto, categoría y artículos. Si no coincide con un gasto existente, la registraré; si parece duplicada, te preguntaré antes.");
+  }
+  if (action === "new-scheduled") {
+    await answerCallback(query.id, "Dime los datos.");
+    return sendMessage(chatId, "Escribe, por ejemplo: “programa pago de alquiler por ₡260.000 el 2026-09-15 mensual”. Te mostraré el resumen antes de guardarlo.");
   }
   if (action === "edit") {
     await answerCallback(query.id, "Te explico.");
@@ -739,11 +864,11 @@ async function handleActionCallback(query, state) {
 
 async function executePendingAction(message, state, pending, telegramMessage = null) {
   const chatId = String(message.chat.id);
-  if (pending.type === "create_movement") {
-    const { result: created } = executeAction(state, pending.action);
+  if (pending.action) {
+    const { result } = executeAction(state, pending.action);
     delete state.agentMemory.pendingActions[chatId];
     await saveState(state);
-    const text = `✅ Listo. Agregué ${created.merchant || "el gasto"} por CRC ${Number(created.amount || 0).toFixed(2)} al historial.`;
+    const text = pending.successText || describeCompletedAction(pending.action, result);
     if (telegramMessage) return editMessage(telegramMessage.chat.id, telegramMessage.message_id, text, []);
     return sendMessage(chatId, text);
   }
@@ -760,6 +885,26 @@ async function executePendingAction(message, state, pending, telegramMessage = n
   const text = `🗑️ Listo. Eliminé ${removed.merchant} por CRC ${Number(removed.amount || 0).toFixed(2)} del ${removed.date}.`;
   if (telegramMessage) return editMessage(telegramMessage.chat.id, telegramMessage.message_id, text, []);
   return sendMessage(chatId, text);
+}
+
+function describeCompletedAction(action, result) {
+  const type = action.type;
+  if (type === "create_movement") return `✅ Listo. Agregué ${result.merchant || "el movimiento"} por CRC ${Number(result.amount || 0).toFixed(2)} al historial.`;
+  if (type === "update_movement") return `✅ Listo. Actualicé ${result.merchant || "el movimiento"}.`;
+  if (type === "set_budget") return `✅ Listo. El presupuesto quedó en CRC ${Number(result.amount || 0).toFixed(2)} para ${result.month}.`;
+  if (type === "create_category") return `✅ Listo. Creé la categoría “${result.name}”.`;
+  if (type === "update_category") return `✅ Listo. Actualicé la categoría “${result.name}”.`;
+  if (type === "delete_category") return "✅ Listo. Eliminé la categoría y reasigné sus movimientos.";
+  if (type === "create_saving_goal") return `✅ Listo. Creé la meta “${result.name}” por CRC ${Number(result.target || 0).toFixed(2)}.`;
+  if (type === "update_saving_goal") return `✅ Listo. Actualicé la meta “${result.name}”.`;
+  if (type === "delete_saving_goal") return `✅ Listo. Eliminé la meta “${result.name}”.`;
+  if (type === "transfer_saving") return `✅ Listo. Registré el movimiento de ahorro por CRC ${Number(result.amount || 0).toFixed(2)}.`;
+  if (type === "create_scheduled_payment") return `✅ Listo. Creé el pago programado “${result.name}”.`;
+  if (type === "mark_scheduled_paid") return `✅ Listo. Marqué el pago como realizado y agregué el gasto de CRC ${Number(result.movement?.amount || 0).toFixed(2)}.`;
+  if (type === "delete_scheduled_payment") return `✅ Listo. Eliminé el pago programado “${result.name}”.`;
+  if (type === "accept_pending") return `✅ Listo. Agregué ${result.merchant || "el movimiento"} al historial.`;
+  if (type === "delete_pending") return `✅ Listo. Descarté ${result.merchant || "el pendiente"}.`;
+  return "✅ Listo. Guardé el cambio.";
 }
 
 function findDeleteRequest(question, state) {
@@ -858,6 +1003,175 @@ async function requestCreateConfirmation(chatId, state, sessionKey, createReques
       { text: "❌ Cancelar", callback_data: `act:cancel:${actionId}` },
     ]]);
 }
+
+async function requestOperationalConfirmation(chatId, state, sessionKey, operation) {
+  const actionId = makeActionId();
+  state.agentMemory.pendingActions[sessionKey] = {
+    id: actionId,
+    type: operation.action.type,
+    action: operation.action,
+    successText: operation.successText || "",
+    createdAt: new Date().toISOString(),
+  };
+  await saveState(state);
+  return sendMessage(chatId, ["⚠️ Antes de hacer este cambio necesito tu autorización.", "", operation.preview, "", "¿Confirmas?"].join("\n"), [[
+    { text: "✅ Sí, confirmar", callback_data: `act:confirm:${actionId}` },
+    { text: "❌ Cancelar", callback_data: `act:cancel:${actionId}` },
+  ]]);
+}
+
+function findOperationalAction(question, state) {
+  const text = normalize(question);
+  const categories = getCategories(state);
+  const amount = extractMovementAmount(question);
+
+  if (/(muestra|muestrame|ver|lista).{0,28}(pendiente|pendientes|bandeja)/.test(text)) {
+    const pending = state.pendingMovements || [];
+    return {
+      status: "info",
+      message: pending.length
+        ? `Bandeja pendiente:\n${pending.slice(0, 12).map((item, index) => `${index + 1}. ${item.merchant || "Sin comercio"} · CRC ${Number(item.amount || 0).toFixed(2)} · ${item.date}`).join("\n")}\n\nPara aceptarlo escribe “acepta pendiente <comercio>” o para descartarlo “descarta pendiente <comercio>”.`
+        : "No hay movimientos pendientes en la Bandeja.",
+    };
+  }
+
+  const pendingMatch = findPendingFromText(question, state);
+  if (pendingMatch && /(acepta|aceptar|agrega|agregar|confirma|confirmar).{0,24}(pendiente|bandeja)|(?:pendiente|bandeja).{0,24}(acepta|aceptar|agrega|agregar)/.test(text)) {
+    return { status: "ready", action: { type: "accept_pending", id: pendingMatch.id }, preview: `Agregaré a historial: ${pendingMatch.merchant} por CRC ${Number(pendingMatch.amount || 0).toFixed(2)}.` };
+  }
+  if (pendingMatch && /(descarta|descartar|elimina|eliminar|borra|borrar).{0,24}(pendiente|bandeja)|(?:pendiente|bandeja).{0,24}(descarta|descartar|elimina|eliminar|borra|borrar)/.test(text)) {
+    return { status: "ready", action: { type: "delete_pending", id: pendingMatch.id }, preview: `Descartaré el pendiente: ${pendingMatch.merchant} por CRC ${Number(pendingMatch.amount || 0).toFixed(2)}.` };
+  }
+
+  if (/(muestra|muestrame|ver|lista).{0,20}(categoria|categorias)/.test(text)) {
+    return { status: "info", message: `Categorías:\n${categories.map((item) => `• ${item.name} (${item.kind === "income" ? "ingreso" : "gasto"})`).join("\n")}` };
+  }
+  const newCategory = question.match(/(?:crea|crear|agrega|agregar)\s+(?:una\s+)?categor[ií]a\s+(?:de\s+)?(.+)/i);
+  if (newCategory) {
+    const name = newCategory[1].replace(/\s+(?:para|con)\s+.*/i, "").trim();
+    if (!name) return { status: "incomplete", message: "Dime el nombre de la categoría. Por ejemplo: “crea categoría Mascotas”." };
+    const kind = /ingreso|entrada/.test(text) ? "income" : "expense";
+    if (categories.some((item) => normalize(item.name) === normalize(name))) return { status: "info", message: `La categoría “${name}” ya existe.` };
+    return { status: "ready", action: { type: "create_category", name, kind }, preview: `Crearé la categoría de ${kind === "income" ? "ingresos" : "gastos"}: “${name}”.` };
+  }
+  const categoryToDelete = findCategoryAfterAction(question, categories, /(elimina|eliminar|borra|borrar).{0,20}categoria/);
+  if (categoryToDelete) return { status: "ready", action: { type: "delete_category", id: categoryToDelete.id }, preview: `Eliminaré la categoría “${categoryToDelete.name}”. Sus movimientos pasarán a Imprevistos.` };
+  const renameCategory = question.match(/(?:cambia|cambiar|renombra|renombrar|edita|editar)\s+(?:la\s+)?categor[ií]a\s+(.+?)\s+(?:a|por)\s+(.+)$/i);
+  if (renameCategory) {
+    const current = categories.find((item) => normalize(item.name) === normalize(renameCategory[1]));
+    const name = renameCategory[2].trim();
+    if (!current || !state.customCategories.some((item) => item.id === current.id)) return { status: "incomplete", message: "Solo puedo renombrar categorías personalizadas. Dime el nombre exacto de la categoría." };
+    return { status: "ready", action: { type: "update_category", id: current.id, name }, preview: `Renombraré la categoría “${current.name}” como “${name}”.` };
+  }
+
+  if (/(presupuesto|limite|l[ií]mite).{0,45}(pone|pon|cambia|actualiza|define|guarda)|(?:pone|pon|cambia|actualiza|define|guarda).{0,45}(presupuesto|limite|l[ií]mite)/.test(text)) {
+    const category = findCategoryInText(question, categories, "expense");
+    if (!category || !amount) return { status: "incomplete", message: "Para cambiar un presupuesto dime categoría y monto. Ejemplo: “pon presupuesto de Alimentación en ₡80.000”." };
+    return { status: "ready", action: { type: "set_budget", categoryId: category.id, amount, month: costaRicaToday().slice(0, 7) }, preview: `El presupuesto de ${category.name} quedará en CRC ${amount.toFixed(2)} este mes.` };
+  }
+  if (/(muestra|muestrame|ver|como van|cómo van).{0,30}(presupuesto|presupuestos)/.test(text)) return { status: "info", message: summarizeBudgets(state, categories) };
+
+  const goal = question.match(/(?:crea|crear|agrega|agregar)\s+(?:una\s+)?meta(?:\s+de\s+ahorro)?\s+(.+)/i);
+  if (goal) {
+    const name = goal[1].replace(/\s+(?:de|por)\s+(?:₡|crc)?[\d.,]+.*$/i, "").trim();
+    if (!name || !amount) return { status: "incomplete", message: "Para crear una meta dime el nombre y objetivo. Ejemplo: “crea meta Viaje de ₡500.000”." };
+    return { status: "ready", action: { type: "create_saving_goal", name, target: amount }, preview: `Crearé la meta “${name}” con objetivo de CRC ${amount.toFixed(2)}.` };
+  }
+  const savingGoal = findSavingFromText(question, state);
+  if (savingGoal && /(elimina|eliminar|borra|borrar).{0,30}(meta|ahorro)|(?:meta|ahorro).{0,30}(elimina|eliminar|borra|borrar)/.test(text)) {
+    return { status: "ready", action: { type: "delete_saving_goal", id: savingGoal.id }, preview: `Eliminaré la meta “${savingGoal.name}” y sus movimientos de ahorro asociados.` };
+  }
+  if (savingGoal && amount && /(cambia|cambiar|actualiza|actualizar|edita|editar).{0,35}(meta|objetivo|ahorro)/.test(text)) {
+    return { status: "ready", action: { type: "update_saving_goal", id: savingGoal.id, target: amount }, preview: `El objetivo de “${savingGoal.name}” quedará en CRC ${amount.toFixed(2)}.` };
+  }
+  if (/(muestra|muestrame|ver|como van|cómo van).{0,30}(ahorro|ahorros|meta|metas)/.test(text)) return { status: "info", message: summarizeSavings(state) };
+  const savingVerb = /(ahorra|ahorrar|deposita|depositar|mete|meter|retira|retirar|saca|sacar)/.test(text);
+  if (savingVerb && amount && /(ahorro|meta|cuenta)/.test(text)) {
+    const account = findSavingFromText(question, state);
+    if (!account) return { status: "incomplete", message: "Dime en cuál meta de ahorro. Puedes escribir, por ejemplo: “ahorra ₡10.000 en Viaje”." };
+    const withdrawal = /(retira|retirar|saca|sacar)/.test(text);
+    return { status: "ready", action: { type: "transfer_saving", accountId: account.id, amount, direction: withdrawal ? "withdraw" : "deposit", date: costaRicaToday() }, preview: `${withdrawal ? "Retiraré" : "Moveré"} CRC ${amount.toFixed(2)} ${withdrawal ? "de" : "a"} la meta “${account.name}”.` };
+  }
+
+  const scheduledDelete = findScheduledFromText(question, state);
+  if (scheduledDelete && /(elimina|eliminar|borra|borrar).{0,25}(programado|pago)/.test(text)) return { status: "ready", action: { type: "delete_scheduled_payment", id: scheduledDelete.id }, preview: `Eliminaré el pago programado “${scheduledDelete.name}”.` };
+  if (/(?:programa|programar|agrega|agregar|crea|crear).{0,30}(?:pago|gasto).{0,45}(?:mensual|programado)|(?:pago|gasto).{0,30}programado/.test(text) && amount) {
+    const nameMatch = question.match(/(?:pago|gasto)(?:\s+programado)?\s+(?:de\s+)?([^₡\d,.]+?)(?:\s+(?:por|de)\s+(?:₡|crc)?[\d.,]+|$)/i);
+    const name = String(nameMatch?.[1] || "Pago programado").replace(/^(?:para|de)\s+/i, "").trim();
+    const category = findCategoryInText(question, categories, "expense") || categories.find((item) => item.id === "imprevistos");
+    const dueDate = parseActionDate(question) || costaRicaToday();
+    return { status: "ready", action: { type: "create_scheduled_payment", name, amount, dueDate, category: category.id, repeat: /mensual/.test(text) ? "monthly" : "once" }, preview: `Crearé el pago programado “${name}” por CRC ${amount.toFixed(2)} para ${dueDate}${/mensual/.test(text) ? ", mensual" : ""}.` };
+  }
+
+  const update = findMovementUpdate(question, state, categories);
+  if (update.status !== "none") return update;
+  return { status: "none" };
+}
+
+function summarizeBudgets(state, categories) {
+  const rows = Object.entries(state.budgets || {}).map(([id, amount]) => `• ${categories.find((item) => item.id === id)?.name || id}: CRC ${Number(amount || 0).toFixed(2)}`);
+  return rows.length ? `Presupuestos del mes actual:\n${rows.join("\n")}` : "No hay presupuestos definidos todavía.";
+}
+
+function summarizeSavings(state) {
+  const accounts = state.savingsAccounts || [];
+  if (!accounts.length) return "No hay metas de ahorro creadas todavía.";
+  return `Metas de ahorro:\n${accounts.map((account) => {
+    const saved = (state.movements || []).filter((item) => item.savingAccountId === account.id).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    return `• ${account.name}: CRC ${saved.toFixed(2)} de CRC ${Number(account.target || 0).toFixed(2)}`;
+  }).join("\n")}`;
+}
+
+function findCategoryInText(question, categories, kind) {
+  const text = normalize(question);
+  return categories.filter((item) => !kind || item.kind === kind).sort((a, b) => normalize(b.name).length - normalize(a.name).length)
+    .find((item) => text.includes(normalize(item.name)) || (item.keywords || []).some((word) => normalize(word).length > 2 && text.includes(normalize(word)))) || null;
+}
+
+function findCategoryAfterAction(question, categories, expression) {
+  return expression.test(normalize(question)) ? findCategoryInText(question, categories) : null;
+}
+
+function findSavingFromText(question, state) {
+  const text = normalize(question);
+  return (state.savingsAccounts || []).sort((a, b) => normalize(b.name).length - normalize(a.name).length).find((item) => text.includes(normalize(item.name))) || null;
+}
+
+function findScheduledFromText(question, state) {
+  const text = normalize(question);
+  return (state.scheduledPayments || []).sort((a, b) => normalize(b.name).length - normalize(a.name).length).find((item) => text.includes(normalize(item.name))) || null;
+}
+
+function findPendingFromText(question, state) {
+  const text = normalize(question);
+  return (state.pendingMovements || []).sort((a, b) => normalize(b.merchant).length - normalize(a.merchant).length).find((item) => text.includes(normalize(item.merchant))) || null;
+}
+
+function parseActionDate(question) {
+  const text = normalize(question);
+  if (/\bhoy\b/.test(text)) return costaRicaToday();
+  const match = String(question).match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
+  return match ? match[0] : "";
+}
+
+function findMovementUpdate(question, state, categories) {
+  const text = normalize(question);
+  if (!/(cambia|cambiar|edita|editar|corrige|corregir|actualiza|actualizar)/.test(text) || !/(gasto|movimiento|compra|categoria|categoría|monto|fecha|comercio)/.test(text)) return { status: "none" };
+  const candidates = (state.movements || []).filter((item) => item.type !== "saving" && normalize(item.merchant).split(" ").some((word) => word.length > 3 && text.includes(word)));
+  if (candidates.length !== 1) return { status: "incomplete", message: "Para editar dime el comercio y qué cambio quieres hacer. Ejemplo: “cambia la categoría del gasto Uber a Transporte”." };
+  const target = candidates[0];
+  const category = findCategoryInText(question, categories, target.type);
+  const newAmount = /(monto|importe|total|por)\s*(?:a|en)?\s*(?:₡|crc)?\s*[\d]/.test(text) ? amountFromQuestion(question) : null;
+  const date = parseActionDate(question);
+  const data = { ...target };
+  if (category && category.id !== target.category) data.category = category.id;
+  if (newAmount) data.amount = newAmount;
+  if (date) data.date = date;
+  if (data.category === target.category && data.amount === target.amount && data.date === target.date) return { status: "incomplete", message: "Dime el valor nuevo que quieres guardar: categoría, monto o fecha." };
+  return { status: "ready", action: { type: "update_movement", id: target.id, data }, preview: `Actualizaré ${target.merchant}: categoría ${categories.find((item) => item.id === data.category)?.name || data.category}, monto CRC ${Number(data.amount).toFixed(2)}, fecha ${data.date}.` };
+}
+
+function amountFromQuestion(question) { return extractMovementAmount(question); }
 
 function inferDraftCategory(question, categories) {
   const text = normalize(question);

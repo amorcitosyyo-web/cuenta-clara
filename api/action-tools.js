@@ -36,7 +36,13 @@ function movementInput(action, fallback = {}) {
     id: fallback.id || makeId(), type, amount, date: String(input.date).slice(0, 10),
     category: String(input.category || (type === "income" ? "ingreso" : "imprevistos")),
     merchant: String(input.merchant || input.name || "").trim(),
-    note: String(input.note || "").trim(), createdAt: fallback.createdAt || new Date().toISOString(),
+    note: String(input.note || "").trim(),
+    receipt: input.receipt || fallback.receipt || null,
+    savingAccountId: input.savingAccountId || fallback.savingAccountId || null,
+    scheduledPaymentId: input.scheduledPaymentId || fallback.scheduledPaymentId || null,
+    scheduledMonth: input.scheduledMonth || fallback.scheduledMonth || null,
+    source: input.source || fallback.source || "manual",
+    createdAt: fallback.createdAt || new Date().toISOString(),
   };
 }
 
@@ -125,9 +131,10 @@ function deleteSavingGoal(state, action) {
 function transferSaving(state, action) {
   const account = state.savingsAccounts.find((item) => item.id === action.accountId);
   if (!account) throw new Error("No encontré esa meta de ahorro.");
-  const amount = Number(action.amount || 0);
+  const amount = Math.abs(Number(action.amount || 0));
   if (!(amount > 0)) throw new Error("El monto debe ser mayor que cero.");
-  const movement = movementInput({ ...action, type: "saving", category: "ahorro", merchant: account.name });
+  const movement = movementInput({ ...action, amount, type: "saving", category: "ahorro", merchant: account.name });
+  if (action.direction === "withdraw" || Number(action.amount) < 0) movement.amount = -amount;
   movement.savingAccountId = account.id;
   state.movements.unshift(movement);
   return { state, result: movement };
@@ -144,8 +151,23 @@ function markScheduledPaid(state, action) {
   const payment = state.scheduledPayments.find((item) => item.id === action.id);
   if (!payment) throw new Error("No encontré ese gasto programado.");
   const month = String(action.month || new Date().toISOString().slice(0, 7));
+  if ((payment.paidMonths || []).includes(month)) return { state, result: payment };
   payment.paidMonths = Array.from(new Set([...(payment.paidMonths || []), month]));
-  return { state, result: payment };
+  const date = scheduledDateForMonth(payment.dueDate, month);
+  const movement = movementInput({
+    type: "expense", amount: payment.amount, date, category: payment.category,
+    merchant: payment.name, note: payment.note || "Pago programado",
+    scheduledPaymentId: payment.id, scheduledMonth: month, source: "scheduled",
+  });
+  state.movements.unshift(movement);
+  return { state, result: { payment, movement } };
+}
+
+function scheduledDateForMonth(dueDate, month) {
+  const day = Math.max(1, Math.min(31, Number(String(dueDate || "").slice(8, 10)) || 1));
+  const [year, numericMonth] = String(month).split("-").map(Number);
+  const lastDay = new Date(year, numericMonth, 0).getDate();
+  return `${month}-${String(Math.min(day, lastDay)).padStart(2, "0")}`;
 }
 
 function deleteScheduledPayment(state, action) {
