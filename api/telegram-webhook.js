@@ -2,6 +2,8 @@ const { getAppState, getCategories, learnRule, saveAppState } = require("./_agen
 const { APP_KNOWLEDGE } = require("./app-knowledge");
 const { runEmailAgentSync } = require("./email-agent-sync");
 const { executeAction } = require("./action-tools");
+const { financialReport, reportText } = require("./reporting");
+const { buildFinancialPdf } = require("./report-pdf");
 
 const MONTHS = {
   enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
@@ -86,6 +88,7 @@ function sendAgentMenu(chatId) {
       [{ text: "📷 Analizar factura", callback_data: "menu:photo" }, { text: "🎯 Metas y ahorros", callback_data: "menu:goals" }],
       [{ text: "💰 Presupuestos", callback_data: "menu:budget" }, { text: "🧩 Categorías", callback_data: "menu:categories" }],
       [{ text: "➕ Pago programado", callback_data: "menu:new-scheduled" }, { text: "✏️ Corregir o eliminar", callback_data: "menu:edit" }],
+      [{ text: "📑 Reportes financieros", callback_data: "menu:reports" }],
     ]);
 }
 
@@ -164,6 +167,9 @@ async function replyAsAgent(message, text, request = null) {
   }
 
   if (isMenuRequest(question)) return sendAgentMenu(chatId);
+
+  const reportRequest = findReportRequest(question);
+  if (reportRequest) return sendFinancialReport(chatId, state, reportRequest.kind, reportRequest.month);
 
   if (isScheduledPaymentsQuestion(question)) {
     const reply = summarizeScheduledPayments(state);
@@ -682,6 +688,66 @@ function sendReceiptSaved(chatId, movement, categories, headline) {
   ]]);
 }
 
+function currentMonth() { return costaRicaToday().slice(0, 7); }
+
+function findReportRequest(question) {
+  const text = normalize(question);
+  if (!/(reporte|reportes|informe|estado financiero|grafico|grafico financiero|como va el mes|como vamos el mes)/.test(text)) return null;
+  let kind = "full";
+  if (/(compar|anterior|meses)/.test(text)) kind = "comparison";
+  else if (/(presupuesto|limite|limites)/.test(text)) kind = "budget";
+  else if (/(pendiente|programado)/.test(text)) kind = "pending";
+  else if (/(ahorro|meta)/.test(text)) kind = "savings";
+  const period = parsePeriod(question);
+  const month = period?.start instanceof Date
+    ? `${period.start.getFullYear()}-${String(period.start.getMonth() + 1).padStart(2, "0")}`
+    : currentMonth();
+  return { kind, month };
+}
+
+function sendReportMenu(chatId) {
+  const month = currentMonth();
+  const previous = previousMonthKey(month);
+  return sendMessage(chatId,
+    "📑 Reportes financieros\n\nElige uno. También puedes escribirme, por ejemplo: “reporte de agosto 2026” o “compara este mes con el anterior”.", [
+      [{ text: "📊 Estado del mes", callback_data: `report:show:full:${month}` }, { text: "↔️ Comparar meses", callback_data: `report:show:comparison:${month}` }],
+      [{ text: "💰 Presupuesto vs gasto", callback_data: `report:show:budget:${month}` }, { text: "📅 Pagos pendientes", callback_data: `report:show:pending:${month}` }],
+      [{ text: "🎯 Ahorros y metas", callback_data: `report:show:savings:${month}` }, { text: "📆 Mes anterior", callback_data: `report:show:full:${previous}` }],
+    ]);
+}
+
+function previousMonthKey(month) {
+  const [year, numericMonth] = String(month).split("-").map(Number);
+  const date = new Date(year, numericMonth - 2, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+async function handleReportCallback(query, action, kind, month) {
+  const chatId = query.message.chat.id;
+  const state = await getState();
+  if (action === "show") {
+    await answerCallback(query.id, "Preparando reporte...");
+    return sendFinancialReport(chatId, state, kind || "full", month || currentMonth());
+  }
+  if (action === "pdf") {
+    await answerCallback(query.id, "Generando PDF...");
+    const report = financialReport(state, month || currentMonth());
+    const pdf = buildFinancialPdf(report, kind || "full");
+    await sendTelegramDocument(chatId, `reporte-cuenta-clara-${report.month}.pdf`, pdf, `📑 Reporte ${report.month}`);
+    return;
+  }
+  return answerCallback(query.id, "Reporte no disponible.");
+}
+
+function sendFinancialReport(chatId, state, kind = "full", month = currentMonth()) {
+  const report = financialReport(state, month);
+  const title = kind === "full" ? "Estado financiero" : "Reporte";
+  return sendMessage(chatId, `${title}\n\n${reportText(report, kind)}`, [[
+    { text: "📄 Descargar PDF con gráficos", callback_data: `report:pdf:${kind}:${month}` },
+    { text: "📑 Otros reportes", callback_data: "menu:reports" },
+  ]]);
+}
+
 async function handleCallback(query) {
   const parts = String(query.data || "").split(":");
   const prefix = parts[0];
@@ -689,9 +755,10 @@ async function handleCallback(query) {
   const scope = parts[2];
   const id = parts[3];
   const categoryId = parts[4];
-  if (!["cc", "act", "menu", "rc"].includes(prefix) || !process.env.AGENT_OWNER_USER_ID) return;
+  if (!["cc", "act", "menu", "rc", "report"].includes(prefix) || !process.env.AGENT_OWNER_USER_ID) return;
   if (prefix === "menu") return handleMenuCallback(query, action);
   if (prefix === "rc") return handleReceiptCallback(query, action, scope);
+  if (prefix === "report") return handleReportCallback(query, action, scope, id);
   const state = await getState();
   const categories = getCategories(state);
   const categoryName = (value) => categories.find((category) => category.id === value)?.name || "Sin categoria";
@@ -818,7 +885,11 @@ async function handleMenuCallback(query, action) {
   }
   if (action === "new-scheduled") {
     await answerCallback(query.id, "Dime los datos.");
-    return sendMessage(chatId, "Escribe, por ejemplo: “programa pago de alquiler por ₡260.000 el 2026-09-15 mensual”. Te mostraré el resumen antes de guardarlo.");
+      return sendMessage(chatId, "Escribe, por ejemplo: “programa pago de alquiler por ₡260.000 el 2026-09-15 mensual”. Te mostraré el resumen antes de guardarlo.");
+  }
+  if (action === "reports") {
+    await answerCallback(query.id, "Elige un reporte.");
+    return sendReportMenu(chatId);
   }
   if (action === "edit") {
     await answerCallback(query.id, "Te explico.");
@@ -1292,6 +1363,17 @@ async function telegram(method, body) {
     body: JSON.stringify(body),
   });
   return response.json().catch(() => ({}));
+}
+
+async function sendTelegramDocument(chatId, filename, bytes, caption = "") {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("caption", caption);
+  form.append("document", new Blob([bytes], { type: "application/pdf" }), filename);
+  const response = await fetch("https://api.telegram.org/bot" + process.env.TELEGRAM_BOT_TOKEN + "/sendDocument", { method: "POST", body: form });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.ok) throw new Error(payload?.description || "No pude enviar el PDF.");
+  return payload;
 }
 
 function answerCallback(callbackQueryId, text) {
