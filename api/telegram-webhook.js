@@ -165,6 +165,21 @@ async function replyAsAgent(message, text, request = null) {
     await saveState(state);
     return sendMessage(chatId, "Listo, no hice ningún cambio.");
   }
+  // A confirmation is a deliberate safety gate. Do not let a new request
+  // accidentally bypass the action the group still has to approve or cancel.
+  if (pendingAction) return sendPendingActionReminder(chatId, pendingAction);
+
+  // The same rule applies while information for a new movement is missing.
+  // Finish it or cancel it before opening another workflow; otherwise words
+  // from an unrelated question can be mistaken for the merchant/category.
+  if (state.agentMemory.movementDrafts?.[sessionKey]) {
+    const draftResult = handleMovementDraft(question, state, sessionKey);
+    if (draftResult.status === "ready") return requestCreateConfirmation(chatId, state, sessionKey, draftResult);
+    if (draftResult.status === "incomplete") {
+      await saveState(state);
+      return sendDraftReminder(chatId, state.agentMemory.movementDrafts?.[sessionKey], draftResult.message);
+    }
+  }
 
   if (isMenuRequest(question)) return sendAgentMenu(chatId);
 
@@ -201,7 +216,7 @@ async function replyAsAgent(message, text, request = null) {
   if (draftResult.status === "ready") return requestCreateConfirmation(chatId, state, sessionKey, draftResult);
   if (draftResult.status === "incomplete") {
     await saveState(state);
-    return sendMessage(chatId, draftResult.message);
+    return sendDraftReminder(chatId, state.agentMemory.movementDrafts?.[sessionKey], draftResult.message);
   }
 
   const deleteRequest = findDeleteRequest(question, state);
@@ -755,10 +770,11 @@ async function handleCallback(query) {
   const scope = parts[2];
   const id = parts[3];
   const categoryId = parts[4];
-  if (!["cc", "act", "menu", "rc", "report"].includes(prefix) || !process.env.AGENT_OWNER_USER_ID) return;
+  if (!["cc", "act", "menu", "rc", "report", "draft"].includes(prefix) || !process.env.AGENT_OWNER_USER_ID) return;
   if (prefix === "menu") return handleMenuCallback(query, action);
   if (prefix === "rc") return handleReceiptCallback(query, action, scope);
   if (prefix === "report") return handleReportCallback(query, action, scope, id);
+  if (prefix === "draft") return handleDraftCallback(query, action, scope);
   const state = await getState();
   const categories = getCategories(state);
   const categoryName = (value) => categories.find((category) => category.id === value)?.name || "Sin categoria";
@@ -914,6 +930,58 @@ function buildReportKeyboard(state, report) {
   });
 }
 
+function draftKeyboard(draft) {
+  if (!draft?.id) return [];
+  return [[
+    { text: "✍️ Continuar registro", callback_data: `draft:continue:${draft.id}` },
+    { text: "❌ Cancelar registro", callback_data: `draft:cancel:${draft.id}` },
+  ]];
+}
+
+function sendDraftReminder(chatId, draft, detail) {
+  if (!draft) return sendMessage(chatId, detail);
+  const message = detail.startsWith("Listo, cancelé")
+    ? detail
+    : [
+      "⛔ Registro pendiente",
+      "No puedo avanzar a otra solicitud hasta que completes o canceles este registro.",
+      "",
+      detail,
+    ].join("\n");
+  return sendMessage(chatId, message, detail.startsWith("Listo, cancelé") ? [] : draftKeyboard(draft));
+}
+
+function sendPendingActionReminder(chatId, pending) {
+  return sendMessage(chatId,
+    [
+      "⛔ Acción pendiente de autorización",
+      "No puedo avanzar a otra solicitud hasta que confirmen o cancelen esta acción.",
+      "",
+      "Usa uno de los botones del mensaje anterior o decide aquí:",
+    ].join("\n"), [[
+      { text: "✅ Sí, confirmar", callback_data: `act:confirm:${pending.id}` },
+      { text: "❌ Cancelar", callback_data: `act:cancel:${pending.id}` },
+    ]]);
+}
+
+async function handleDraftCallback(query, action, draftId) {
+  const chatId = String(query.message?.chat?.id || "");
+  const state = await getState();
+  const draft = state.agentMemory.movementDrafts?.[chatId];
+  if (!draft || draft.id !== draftId) return answerCallback(query.id, "Este registro ya no está pendiente.");
+  if (action === "cancel") {
+    delete state.agentMemory.movementDrafts[chatId];
+    await saveState(state);
+    await editMessage(query.message.chat.id, query.message.message_id, "❌ Registro cancelado. No guardé ningún movimiento.", []);
+    return answerCallback(query.id, "Registro cancelado.");
+  }
+  if (action === "continue") {
+    await answerCallback(query.id, "El registro sigue pendiente.");
+    return sendDraftReminder(chatId, draft, "Completa el dato que falta en un mensaje o toca “Cancelar registro”.");
+  }
+  return answerCallback(query.id, "Acción no reconocida.");
+}
+
 async function handleActionCallback(query, state) {
   const action = String(query.data || "").split(":")[1];
   const actionId = String(query.data || "").split(":")[2];
@@ -1016,7 +1084,10 @@ function handleMovementDraft(question, state, sessionKey) {
     return { status: "incomplete", message: "Listo, cancelé el registro pendiente." };
   }
 
-  const draft = { ...(existing || { type: /\b(ingreso|salario|pago recibido)\b/.test(normalized) ? "income" : "expense" }) };
+  const draft = {
+    ...(existing || { type: /\b(ingreso|salario|pago recibido)\b/.test(normalized) ? "income" : "expense" }),
+    id: existing?.id || makeActionId(),
+  };
   const amount = extractMovementAmount(question);
   if (amount) draft.amount = amount;
   if (/\bhoy\b/.test(normalized)) draft.date = costaRicaToday();
