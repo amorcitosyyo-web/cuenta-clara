@@ -6,11 +6,15 @@ module.exports = async function handler(req, res) {
   try {
     const userId = await authorizedUser(req);
     if (!userId) return res.status(403).json({ error: "No tienes acceso a la migración." });
+    // Build the structured mirror first while legacy JSON remains untouched.
+    // Comparing before this copy made a brand-new migration report zero rows
+    // even when the existing data was perfectly valid.
+    const state = await getAppState(userId);
+    await syncStructuredState(userId, state);
     const check = await migrationCheck(userId);
     const valid = Number(check.legacy_count) === Number(check.structured_count)
       && Math.abs(Number(check.legacy_total) - Number(check.structured_total)) < 0.01;
     if (!valid) return res.status(409).json({ ok: false, verified: false, check, error: "Los movimientos o totales no coinciden; la versión anterior sigue intacta." });
-    const state = await getAppState(userId);
     state.meta = { ...(state.meta || {}), structuredStorageEnabled: true, structuredStorageVerifiedAt: new Date().toISOString() };
     await syncStructuredState(userId, state);
     await saveAppState(userId, state);
