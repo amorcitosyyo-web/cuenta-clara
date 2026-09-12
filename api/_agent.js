@@ -356,6 +356,10 @@ async function saveAppState(userId, data) {
     body: JSON.stringify({ user_id: userId, data: normalizeState(data) }),
   });
   if (!response.ok) throw new Error("No pude guardar los datos del agente");
+  if (data?.meta?.structuredStorageEnabled) {
+    const { syncStructuredState } = require("./agent-store");
+    await syncStructuredState(userId, normalizeState(data));
+  }
 }
 
 async function sendTelegram(message, keyboard = []) {
