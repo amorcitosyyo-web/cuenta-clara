@@ -4,6 +4,8 @@ const { runEmailAgentSync } = require("./email-agent-sync");
 const { executeAction } = require("./action-tools");
 const { financialReport, reportText, money } = require("./reporting");
 const { buildFinancialPdf } = require("./report-pdf");
+const { menu: agentMenu, planningPrompt, runAgentTurn, setTask, taskKey, undoAction } = require("./agent-core");
+const { analyzePdfWithOpenAI, mapSpreadsheetRows, readSpreadsheet, storeDocument } = require("./document-tools");
 
 const MONTHS = {
   enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
@@ -66,6 +68,11 @@ function isAllowedUser(userId) {
   return values("TELEGRAM_ALLOWED_USER_IDS").includes(String(userId || ""));
 }
 
+function telegramActor(message) {
+  const from = message?.from || {};
+  return String(from.username || [from.first_name, from.last_name].filter(Boolean).join(" ") || from.id || "grupo");
+}
+
 function isMenuRequest(question) {
   const text = normalize(question);
   return /(^|\b)(menu|ayuda|opciones|comandos)(\b|$)/.test(text) ||
@@ -73,23 +80,8 @@ function isMenuRequest(question) {
 }
 
 function sendAgentMenu(chatId) {
-  return sendMessage(chatId,
-    [
-      "📋 Menú de Cuenta Clara",
-      "",
-      "Elige una opción o escríbeme con tus propias palabras. No necesitas seguir el menú para que te entienda.",
-      "",
-      "También puedes enviarme una foto de una factura o comprobante y la analizo antes de guardar nada.",
-    ].join("\n"),
-    [
-      [{ text: "📬 Leer correo", callback_data: "menu:email" }],
-      [{ text: "📊 Resumen del mes", callback_data: "menu:month" }, { text: "📅 Pagos pendientes", callback_data: "menu:scheduled" }],
-      [{ text: "➕ Agregar gasto o ingreso", callback_data: "menu:add" }, { text: "📥 Bandeja pendiente", callback_data: "menu:inbox" }],
-      [{ text: "📷 Analizar factura", callback_data: "menu:photo" }, { text: "🎯 Metas y ahorros", callback_data: "menu:goals" }],
-      [{ text: "💰 Presupuestos", callback_data: "menu:budget" }, { text: "🧩 Categorías", callback_data: "menu:categories" }],
-      [{ text: "➕ Pago programado", callback_data: "menu:new-scheduled" }, { text: "✏️ Corregir o eliminar", callback_data: "menu:edit" }],
-      [{ text: "📑 Reportes financieros", callback_data: "menu:reports" }],
-    ]);
+  const view = agentMenu();
+  return sendMessage(chatId, view.text, view.buttons);
 }
 
 async function handleMessage(message, request = null) {
@@ -97,6 +89,7 @@ async function handleMessage(message, request = null) {
   if (Array.isArray(message.photo) && message.photo.length) {
     return analyzeTelegramImage(message, String(message.caption || "").trim());
   }
+  if (message.document) return analyzeTelegramDocument(message, String(message.caption || "").trim());
   if (message.voice || message.audio) {
     await sendChatAction(chatId, "typing");
     const transcript = await transcribeVoice(message.voice || message.audio);
@@ -159,6 +152,13 @@ async function replyAsAgent(message, text, request = null) {
   const pendingQueries = state.agentMemory.pendingQueries || {};
 
   const pendingAction = state.agentMemory.pendingActions?.[sessionKey];
+  const pausedAction = state.agentMemory.pausedActions?.[sessionKey];
+  if (pausedAction && /^(continuar|reanudar|seguir)$/i.test(normalize(question))) {
+    state.agentMemory.pendingActions[sessionKey] = pausedAction;
+    delete state.agentMemory.pausedActions[sessionKey];
+    await saveState(state);
+    return sendPendingActionReminder(chatId, pausedAction);
+  }
   if (pendingAction && /^(si|sí|confirmo|confirmar|hazlo|dale|ok|okay|acepto)$/i.test(normalize(question))) {
     return executePendingAction(message, state, pendingAction);
   }
@@ -167,8 +167,9 @@ async function replyAsAgent(message, text, request = null) {
     await saveState(state);
     return sendMessage(chatId, "Listo, no hice ningún cambio.");
   }
-  // A confirmation is a deliberate safety gate. Do not let a new request
-  // accidentally bypass the action the group still has to approve or cancel.
+  // Do not trap the whole conversation behind a legacy confirmation.  The
+  // action remains safe and pending, but the household can explicitly pause
+  // it and ask a different question.
   if (pendingAction) return sendPendingActionReminder(chatId, pendingAction);
 
   // The same rule applies while information for a new movement is missing.
@@ -325,6 +326,22 @@ async function replyAsAgent(message, text, request = null) {
       await saveState(state);
       return sendMessage(chatId, reply);
     }
+  }
+
+  // The shared agent handles planning, accounts, incomes and free-form
+  // financial language.  Existing deterministic paths above remain for
+  // Make, report delivery and legacy callbacks while the migration is live.
+  const agentReply = await runAgentTurn({
+    state,
+    channel: "telegram",
+    conversationId: sessionKey,
+    actor: telegramActor(message),
+    text: question,
+  });
+  if (agentReply) {
+    rememberConversation(state, sessionKey, question, agentReply.text);
+    await saveState(state);
+    return sendMessage(chatId, agentReply.text, agentReply.buttons || []);
   }
 
   const requiredPeriod = needsPeriod(question);
@@ -710,6 +727,75 @@ async function analyzeTelegramImage(message, caption) {
   }
 }
 
+async function analyzeTelegramDocument(message, caption) {
+  const chatId = message.chat.id;
+  const document = message.document;
+  const name = String(document.file_name || "documento");
+  const mime = String(document.mime_type || "application/octet-stream");
+  try {
+    await sendChatAction(chatId, "typing");
+    const fileInfo = await telegram("getFile", { file_id: document.file_id });
+    const filePath = fileInfo?.result?.file_path;
+    if (!filePath) throw new Error("No pude obtener el archivo de Telegram.");
+    const response = await fetch(`https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${filePath}`);
+    if (!response.ok) throw new Error("No pude descargar el archivo.");
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > 18 * 1024 * 1024) throw new Error("El archivo supera el límite de 18 MB. Envíalo dividido o comprimido.");
+    const state = await getState();
+    const categories = getCategories(state).filter((item) => item.kind === "expense");
+    const lowerName = name.toLowerCase();
+    let candidates = [];
+    if (/\.(csv|tsv|xlsx|xls)$/i.test(lowerName)) {
+      candidates = mapSpreadsheetRows(await readSpreadsheet(buffer, name), lowerName.endsWith(".csv") || lowerName.endsWith(".tsv") ? "csv" : "xlsx");
+    } else if (mime === "application/pdf" || lowerName.endsWith(".pdf")) {
+      const result = await analyzePdfWithOpenAI(buffer, name, categories);
+      candidates = (result.items || []).map((item) => ({ ...item, type: "expense", source: "document", confidence: Number(item.confidence || 0.92), items: item.items || [] }));
+    } else {
+      return sendMessage(chatId, "Puedo leer Excel, CSV, PDF e imágenes. Ese tipo de archivo todavía no es compatible.");
+    }
+    const documentRecord = await storeDocument({ ownerId: process.env.AGENT_OWNER_USER_ID, buffer, filename: name, mimeType: mime, metadata: { source: "telegram", caption, receivedAt: new Date().toISOString() } });
+    if (documentRecord) state.receiptRecords.push(documentRecord);
+    const created = []; const duplicates = []; const incomplete = []; const incomeForConfirmation = [];
+    for (const candidate of candidates.slice(0, 120)) {
+      const merchant = String(candidate.merchant || "").trim();
+      const amount = Number(candidate.amount || candidate.total || 0);
+      if (!merchant || !(amount > 0)) { incomplete.push(candidate.row || merchant || "fila"); continue; }
+      const category = categoryFromVision(candidate.category, categories);
+      const data = {
+        type: candidate.type === "income" ? "income" : "expense", merchant, amount,
+        date: /^\d{4}-\d{2}-\d{2}$/.test(String(candidate.date || "")) ? candidate.date : costaRicaToday(),
+        category: category?.id || "imprevistos", note: receiptNote(candidate.items || [], candidate.note || ""),
+        source: candidate.source || "document", confidence: Number(candidate.confidence || 0.95),
+        receipt: { documentId: documentRecord?.id || null, fileName: name, items: candidate.items || [], analyzedAt: new Date().toISOString(), confidence: Number(candidate.confidence || 0.95) }, receiptItems: candidate.items || [],
+      };
+      const duplicate = findReceiptDuplicate(data, state);
+      if (duplicate) { duplicates.push({ candidate: data, duplicate }); continue; }
+      if (data.type === "income") { incomeForConfirmation.push(data); continue; }
+      const { result } = executeAction(state, { type: "create_movement", data, actor: telegramActor(message), channel: "telegram" });
+      created.push(result);
+    }
+    await saveState(state);
+    const lines = [
+      `📎 Revisé ${name}.`,
+      created.length ? `✅ Agregué ${created.length} gasto(s) claro(s).` : "",
+      duplicates.length ? `⚠️ Encontré ${duplicates.length} posible(s) duplicado(s); no los agregué.` : "",
+      incomeForConfirmation.length ? `💵 Encontré ${incomeForConfirmation.length} ingreso(s). Los ingresos siempre requieren confirmación.` : "",
+      incomplete.length ? `📝 Dejé ${incomplete.length} fila(s) para revisar porque faltaban comercio o monto.` : "",
+    ].filter(Boolean);
+    if (duplicates.length) {
+      const draftId = makeActionId();
+      state.agentMemory.documentDuplicates = state.agentMemory.documentDuplicates || {};
+      state.agentMemory.documentDuplicates[draftId] = { chatId: String(chatId), items: duplicates, createdAt: new Date().toISOString() };
+      await saveState(state);
+      return sendMessage(chatId, `${lines.join("\n")}\n\nEl primer duplicado es ${duplicates[0].duplicate.merchant} por CRC ${Number(duplicates[0].duplicate.amount).toFixed(2)} el ${duplicates[0].duplicate.date}. ¿Es el mismo gasto?`, [[{ text: "✅ Sí, adjuntar comprobante", callback_data: `doc:dupe-yes:${draftId}` }, { text: "➕ No, agregar como nuevo", callback_data: `doc:dupe-no:${draftId}` }]]);
+    }
+    return sendMessage(chatId, lines.join("\n"));
+  } catch (error) {
+    console.error("Telegram document analysis error:", error);
+    return sendMessage(chatId, `No pude leer ${name}: ${error.message || "revisa el archivo e inténtalo de nuevo."}`);
+  }
+}
+
 function parseReceiptVision(answer) {
   const text = String(answer || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
   try { return JSON.parse(text); } catch { return null; }
@@ -814,7 +900,9 @@ async function handleCallback(query) {
   const scope = parts[2];
   const id = parts[3];
   const categoryId = parts[4];
-  if (!["cc", "act", "menu", "rc", "report", "draft"].includes(prefix) || !process.env.AGENT_OWNER_USER_ID) return;
+  if (!["cc", "act", "menu", "rc", "report", "draft", "agent", "doc"].includes(prefix) || !process.env.AGENT_OWNER_USER_ID) return;
+  if (prefix === "agent") return handleAgentCallback(query, parts.slice(1));
+  if (prefix === "doc") return handleDocumentCallback(query, action, scope);
   if (prefix === "menu") return handleMenuCallback(query, action);
   if (prefix === "rc") return handleReceiptCallback(query, action, scope);
   if (prefix === "report") return handleReportCallback(query, action, scope, id);
@@ -881,6 +969,94 @@ async function handleCallback(query) {
       "Listo. " + item.merchant + " quedo como " + categoryName(categoryId) + ".", []);
     await answerCallback(query.id, "Movimiento actualizado.");
   }
+}
+
+async function handleDocumentCallback(query, action, draftId) {
+  const chatId = String(query.message?.chat?.id || "");
+  const state = await getState();
+  const draft = state.agentMemory.documentDuplicates?.[draftId];
+  if (!draft || draft.chatId !== chatId) return answerCallback(query.id, "Esta revisión ya venció.");
+  const entry = draft.items?.[0];
+  if (!entry) return answerCallback(query.id, "No encontré ese comprobante.");
+  if (action === "dupe-yes") {
+    const movement = state.movements.find((item) => item.id === entry.duplicate.id);
+    if (!movement) return answerCallback(query.id, "No encontré el gasto original.");
+    movement.receipt = entry.candidate.receipt;
+    movement.receiptItems = entry.candidate.receiptItems || [];
+    movement.note = [movement.note, entry.candidate.note].filter(Boolean).join(movement.note && entry.candidate.note ? " · " : "");
+    delete state.agentMemory.documentDuplicates[draftId];
+    await saveState(state);
+    await editMessage(chatId, query.message.message_id, `✅ Adjunté el comprobante y los artículos a ${movement.merchant}.`, []);
+    return answerCallback(query.id, "Comprobante adjuntado.");
+  }
+  if (action === "dupe-no") {
+    const { result } = executeAction(state, { type: "create_movement", data: entry.candidate, actor: telegramActor(query), channel: "telegram" });
+    delete state.agentMemory.documentDuplicates[draftId];
+    await saveState(state);
+    await editMessage(chatId, query.message.message_id, `✅ Agregué ${result.merchant} por CRC ${Number(result.amount).toFixed(2)} como gasto independiente.`, []);
+    return answerCallback(query.id, "Gasto agregado.");
+  }
+  return answerCallback(query.id, "Acción no reconocida.");
+}
+
+async function handleAgentCallback(query, parts) {
+  const [action, id] = parts;
+  const chatId = String(query.message?.chat?.id || "");
+  const state = await getState();
+  const actor = telegramActor(query);
+  if (action === "plan") {
+    const reply = planningPrompt(state, "telegram", chatId);
+    await saveState(state);
+    await answerCallback(query.id, "Iniciando planificación...");
+    return sendMessage(chatId, reply.text, reply.buttons || []);
+  }
+  if (["status", "accounts", "income"].includes(action)) {
+    const reply = await runAgentTurn({ state, channel: "telegram", conversationId: chatId, actor, text: action, intent: action });
+    await saveState(state);
+    await answerCallback(query.id, "Listo.");
+    return sendMessage(chatId, reply.text, reply.buttons || []);
+  }
+  if (action === "cancel") {
+    const key = taskKey("telegram", chatId);
+    const pending = state.agentMemory.pendingActions?.[key];
+    if (!pending || pending.id !== id) return answerCallback(query.id, "Esta autorización ya venció.");
+    delete state.agentMemory.pendingActions[key];
+    await saveState(state);
+    await editMessage(chatId, query.message.message_id, "❌ Acción cancelada. No cambié ningún dato.", []);
+    return answerCallback(query.id, "Cancelado.");
+  }
+  if (action === "confirm") {
+    const key = taskKey("telegram", chatId);
+    const pending = state.agentMemory.pendingActions?.[key];
+    if (!pending || pending.id !== id) return answerCallback(query.id, "Esta autorización ya venció.");
+    try {
+      const { result } = executeAction(state, pending.action);
+      delete state.agentMemory.pendingActions[key];
+      await saveState(state);
+      await editMessage(chatId, query.message.message_id, `✅ Listo. ${describeCompletedAction(pending.action, result)}`, []);
+      return answerCallback(query.id, "Acción confirmada.");
+    } catch (error) {
+      return answerCallback(query.id, error.message || "No pude completar esa acción.");
+    }
+  }
+  if (action === "undo") {
+    const reply = undoAction(state, id, actor, "telegram");
+    await saveState(state);
+    await answerCallback(query.id, reply.text);
+    return sendMessage(chatId, reply.text, reply.buttons || []);
+  }
+  if (action === "task") {
+    const choice = id;
+    if (choice === "cancel") setTask(state, "telegram", chatId, null);
+    if (choice === "pause") {
+      const active = state.agentMemory.activeTasks?.[taskKey("telegram", chatId)];
+      if (active) setTask(state, "telegram", chatId, { ...active, status: "paused" });
+    }
+    await saveState(state);
+    await answerCallback(query.id, "Listo.");
+    return sendMessage(chatId, choice === "cancel" ? "❌ Tarea cancelada. No guardé cambios pendientes." : choice === "pause" ? "⏸️ Tarea pausada. Ahora dime qué necesitas." : "▶️ Continúa con el dato que falta.");
+  }
+  return answerCallback(query.id, "Acción no disponible.");
 }
 
 async function handleReceiptCallback(query, action, id) {
@@ -999,12 +1175,13 @@ function sendPendingActionReminder(chatId, pending) {
   return sendMessage(chatId,
     [
       "⛔ Acción pendiente de autorización",
-      "No puedo avanzar a otra solicitud hasta que confirmen o cancelen esta acción.",
+      "Esta acción no se ejecutará hasta que confirmen o cancelen.",
       "",
       "Usa uno de los botones del mensaje anterior o decide aquí:",
     ].join("\n"), [[
       { text: "✅ Sí, confirmar", callback_data: `act:confirm:${pending.id}` },
       { text: "❌ Cancelar", callback_data: `act:cancel:${pending.id}` },
+      { text: "⏸️ Pausar y cambiar", callback_data: `act:pause:${pending.id}` },
     ]]);
 }
 
@@ -1037,6 +1214,14 @@ async function handleActionCallback(query, state) {
     await saveState(state);
     await editMessage(query.message.chat.id, query.message.message_id, "❌ Acción cancelada. No cambié ningún dato.", []);
     return answerCallback(query.id, "Cancelado.");
+  }
+  if (action === "pause") {
+    state.agentMemory.pausedActions = state.agentMemory.pausedActions || {};
+    state.agentMemory.pausedActions[chatId] = pending;
+    delete state.agentMemory.pendingActions[chatId];
+    await saveState(state);
+    await editMessage(query.message.chat.id, query.message.message_id, "⏸️ Acción pausada. No hice cambios. Puedes hablar de otro tema y escribir “continuar” cuando quieras retomarla.", []);
+    return answerCallback(query.id, "Acción pausada.");
   }
   if (action === "confirm") {
     await executePendingAction({ chat: query.message.chat }, state, pending, query.message);

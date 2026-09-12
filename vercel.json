@@ -10,5 +10,13 @@
         }
       ]
     }
+  ],
+  "crons": [
+    { "path": "/api/agent-jobs?job=email", "schedule": "0 3 * * *" },
+    { "path": "/api/agent-jobs?job=email", "schedule": "0 12 * * *" },
+    { "path": "/api/agent-jobs?job=email", "schedule": "0 17 * * *" },
+    { "path": "/api/agent-jobs?job=email", "schedule": "0 22 * * *" },
+    { "path": "/api/agent-jobs?job=due", "schedule": "0 14 * * *" },
+    { "path": "/api/agent-jobs?job=routine", "schedule": "0 1 * * *" }
   ]
 }

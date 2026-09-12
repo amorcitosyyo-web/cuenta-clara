@@ -1,0 +1,12 @@
+{
+  "name": "cuenta-clara",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Cuenta Clara financial agent",
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  },
+  "scripts": {
+    "test": "node tests/parser-smoke.mjs && node tests/agent-core-smoke.mjs"
+  }
+}

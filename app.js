@@ -2178,7 +2178,7 @@ async function askAdvisor(question) {
   els.advisorStatus.textContent = intent.mode === "light" ? "Pensando..." : "Revisando datos...";
 
   try {
-    const response = await fetch("/api/financial-advisor", {
+    const response = await fetch("/api/agent-turn", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -2186,8 +2186,9 @@ async function askAdvisor(question) {
       },
       body: JSON.stringify({
         question: cleanQuestion,
-        context: buildAdvisorContext(intent),
-        conversation: buildAdvisorConversation(),
+        // The server retrieves the shared financial state itself. Sending a
+        // client-side summary here used to make web and Telegram disagree.
+        channel: "web",
       }),
     });
     const payload = await response.json().catch(() => ({}));
@@ -2983,11 +2984,15 @@ function parseMoneyValue(value) {
   if (!clean) return 0;
   const lastComma = clean.lastIndexOf(",");
   const lastDot = clean.lastIndexOf(".");
-  const decimalSeparator = lastComma > lastDot ? "," : ".";
-  const normalized = clean
-    .replace(new RegExp(`\\${decimalSeparator === "," ? "." : ","}`, "g"), "")
-    .replace(decimalSeparator, ".");
-  return Number(normalized || 0);
+  const decimalIndex = Math.max(lastComma, lastDot);
+  const decimalPart = decimalIndex >= 0 ? clean.slice(decimalIndex + 1) : "";
+  // Costa Rican receipts commonly use both 6,650 and 6.650 as thousands.
+  // Treat a separator as decimal only when it has exactly two trailing digits.
+  if (decimalPart.length === 2) {
+    const integer = clean.slice(0, decimalIndex).replace(/[.,]/g, "");
+    return Number(`${integer}.${decimalPart}`) || 0;
+  }
+  return Number(clean.replace(/[.,]/g, "")) || 0;
 }
 
 function renderPendingInbox() {

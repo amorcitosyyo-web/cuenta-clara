@@ -63,6 +63,19 @@ function normalizeState(data) {
     budgets: state.budgets && typeof state.budgets === "object" ? state.budgets : {},
     savingsAccounts: Array.isArray(state.savingsAccounts) ? state.savingsAccounts : [],
     scheduledPayments: Array.isArray(state.scheduledPayments) ? state.scheduledPayments : [],
+    // These collections are deliberately additive.  The web app can continue
+    // to read the legacy JSON while the agent progressively uses structured
+    // household records.  The migration endpoint validates both totals before
+    // enabling the new source of truth.
+    accounts: Array.isArray(state.accounts) ? state.accounts : [],
+    cards: Array.isArray(state.cards) ? state.cards : [],
+    accountBalances: Array.isArray(state.accountBalances) ? state.accountBalances : [],
+    incomePlans: Array.isArray(state.incomePlans) ? state.incomePlans : [],
+    plannedTransfers: Array.isArray(state.plannedTransfers) ? state.plannedTransfers : [],
+    monthlyPlans: Array.isArray(state.monthlyPlans) ? state.monthlyPlans : [],
+    receiptRecords: Array.isArray(state.receiptRecords) ? state.receiptRecords : [],
+    auditLog: Array.isArray(state.auditLog) ? state.auditLog.slice(-500) : [],
+    trash: Array.isArray(state.trash) ? state.trash : [],
     customCategories: Array.isArray(state.customCategories) ? state.customCategories : [],
     merchantRules: Array.isArray(state.merchantRules) ? state.merchantRules : [],
     agentMemory: {
@@ -77,6 +90,11 @@ function normalizeState(data) {
       telegramReports: [],
       chatHistory: [],
       telegramSessions: {},
+      activeTasks: {},
+      householdProfile: {},
+      automationSettings: {},
+      undoActions: {},
+      pausedActions: {},
       ...state.agentMemory,
       goals: Array.isArray(state.agentMemory?.goals) ? state.agentMemory.goals : [],
       notes: Array.isArray(state.agentMemory?.notes) ? state.agentMemory.notes : [],
@@ -105,6 +123,26 @@ function normalizeState(data) {
         typeof state.agentMemory.telegramSessions === "object" &&
         !Array.isArray(state.agentMemory.telegramSessions)
           ? state.agentMemory.telegramSessions
+          : {},
+      activeTasks:
+        state.agentMemory?.activeTasks && typeof state.agentMemory.activeTasks === "object" && !Array.isArray(state.agentMemory.activeTasks)
+          ? state.agentMemory.activeTasks
+          : {},
+      householdProfile:
+        state.agentMemory?.householdProfile && typeof state.agentMemory.householdProfile === "object" && !Array.isArray(state.agentMemory.householdProfile)
+          ? state.agentMemory.householdProfile
+          : {},
+      automationSettings:
+        state.agentMemory?.automationSettings && typeof state.agentMemory.automationSettings === "object" && !Array.isArray(state.agentMemory.automationSettings)
+          ? state.agentMemory.automationSettings
+          : {},
+      undoActions:
+        state.agentMemory?.undoActions && typeof state.agentMemory.undoActions === "object" && !Array.isArray(state.agentMemory.undoActions)
+          ? state.agentMemory.undoActions
+          : {},
+      pausedActions:
+        state.agentMemory?.pausedActions && typeof state.agentMemory.pausedActions === "object" && !Array.isArray(state.agentMemory.pausedActions)
+          ? state.agentMemory.pausedActions
           : {},
     },
     meta: { ...(state.meta || {}), updatedAt: new Date().toISOString() },
