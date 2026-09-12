@@ -2178,7 +2178,7 @@ async function askAdvisor(question) {
   els.advisorStatus.textContent = intent.mode === "light" ? "Pensando..." : "Revisando datos...";
 
   try {
-    const response = await fetch("/api/agent-turn", {
+    const response = await fetch("/api/financial-advisor", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

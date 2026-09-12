@@ -1,7 +1,9 @@
 const { processInboxItems } = require("./agent-inbox");
 const { normalizeMakeItems } = require("./make-payload");
 
-module.exports = async function handler(req, res) {
+// One endpoint serves the existing email sync and the scheduled agent jobs,
+// keeping the Hobby deployment inside Vercel's function limit.
+const legacyHandler = async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     res.status(405).json({ error: "Metodo no permitido" });
@@ -152,3 +154,10 @@ function splitConcatenatedJsonObjects(text) {
 
   return chunks;
 }
+
+module.exports = async function syncEmailOrRunAgentJob(req, res) {
+  if (String(req.query?.job || req.body?.job || "")) {
+    return require("../lib/agent-jobs")(req, res);
+  }
+  return legacyHandler(req, res);
+};

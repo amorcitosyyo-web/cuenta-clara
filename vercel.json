@@ -12,11 +12,11 @@
     }
   ],
   "crons": [
-    { "path": "/api/agent-jobs?job=email", "schedule": "0 3 * * *" },
-    { "path": "/api/agent-jobs?job=email", "schedule": "0 12 * * *" },
-    { "path": "/api/agent-jobs?job=email", "schedule": "0 17 * * *" },
-    { "path": "/api/agent-jobs?job=email", "schedule": "0 22 * * *" },
-    { "path": "/api/agent-jobs?job=due", "schedule": "0 14 * * *" },
-    { "path": "/api/agent-jobs?job=routine", "schedule": "0 1 * * *" }
+    { "path": "/api/sync-email?job=email", "schedule": "0 3 * * *" },
+    { "path": "/api/sync-email?job=email", "schedule": "0 12 * * *" },
+    { "path": "/api/sync-email?job=email", "schedule": "0 17 * * *" },
+    { "path": "/api/sync-email?job=email", "schedule": "0 22 * * *" },
+    { "path": "/api/sync-email?job=due", "schedule": "0 14 * * *" },
+    { "path": "/api/sync-email?job=routine", "schedule": "0 1 * * *" }
   ]
 }

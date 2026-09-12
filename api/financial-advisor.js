@@ -1,3 +1,7 @@
+// The legacy endpoint stays public so existing web clients keep working, but
+// it now delegates the conversation to the shared autonomous orchestrator.
+module.exports = require("../lib/agent-turn");
+/*
 const GEMINI_MODEL = "gemini-2.0-flash";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const { APP_KNOWLEDGE } = require("./app-knowledge");
@@ -220,3 +224,4 @@ function normalizeAdvisorResponse(value) {
       : [],
   };
 }
+*/
