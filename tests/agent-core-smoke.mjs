@@ -2,11 +2,23 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { normalizeState } = require("../lib/_agent.js");
+const { fetchSupabaseState, normalizeState } = require("../lib/_agent.js");
 const { executeAction } = require("../lib/action-tools.js");
 const { cycleFor, executeProposedAction, runAgentTurn } = require("../lib/agent-core.js");
 
 const state = normalizeState({});
+
+const originalFetch = globalThis.fetch;
+let supabaseAttempts = 0;
+globalThis.fetch = async () => {
+  supabaseAttempts += 1;
+  return supabaseAttempts === 1 ? { ok: false, status: 504 } : { ok: true, status: 200 };
+};
+const retried = await fetchSupabaseState("https://example.test/state", {});
+globalThis.fetch = originalFetch;
+assert.equal(retried.ok, true);
+assert.equal(supabaseAttempts, 2);
+
 assert.deepEqual(cycleFor("2026-09-06"), { id: "2026-08-07:2026-09-06", start: "2026-08-07", end: "2026-09-06" });
 assert.deepEqual(cycleFor("2026-09-07"), { id: "2026-09-07:2026-10-06", start: "2026-09-07", end: "2026-10-06" });
 
