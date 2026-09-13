@@ -179,6 +179,9 @@ const incomeDraft = telegramWebhook._test.handleMovementDraft("registra un ingre
 assert.equal(incomeDraft.status, "ready");
 assert.equal(incomeDraft.data.merchant, "Ingreso auditoría");
 assert.equal(incomeDraft.data.category, "ingreso");
+const incomeDeletion = telegramWebhook._test.findDeleteRequest("elimina el ingreso Ingreso auditoría por CRC 456", normalizeState({ movements: [{ id: "income-audit", type: "income", merchant: "Ingreso auditoría", amount: 456, date: "2026-09-13", category: "ingreso" }] }));
+assert.equal(incomeDeletion.status, "ready");
+assert.equal(incomeDeletion.movement.id, "income-audit");
 
 const scheduledCreation = telegramWebhook._test.findOperationalAction("crea pago programado Auditoría temporal por CRC 789 para el 20 de septiembre, mensual, categoría hogar.", normalizeState({}));
 assert.equal(scheduledCreation.status, "ready");
