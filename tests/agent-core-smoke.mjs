@@ -105,5 +105,8 @@ assert.equal(telegramWebhook._test.isRecurringAnalysisRequest("Analisa todos los
 assert.equal(telegramWebhook._test.detectEmailIntent("de nuevo porfa", {
   agentMemory: { telegramSessions: { grupo: [{ role: "user", text: "lee el correo porfa" }, { role: "assistant", text: "Make respondió 0 movimientos nuevos" }] } },
 }, "grupo").matched, true);
+assert.equal(telegramWebhook._test.detectEmailIntent("de nuevo porfa", {
+  agentMemory: { telegramSessions: { grupo: [] } },
+}, "grupo", "Listo 💌. Make respondió 0 movimientos nuevos; no había nada nuevo que agregar.").matched, true);
 
 console.log("agent-core smoke: ok");
