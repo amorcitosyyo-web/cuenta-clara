@@ -180,6 +180,11 @@ assert.equal(incomeDraft.status, "ready");
 assert.equal(incomeDraft.data.merchant, "Ingreso auditoría");
 assert.equal(incomeDraft.data.category, "ingreso");
 
+const scheduledCreation = telegramWebhook._test.findOperationalAction("crea pago programado Auditoría temporal por CRC 789 para el 20 de septiembre, mensual, categoría hogar.", normalizeState({}));
+assert.equal(scheduledCreation.status, "ready");
+assert.equal(scheduledCreation.action.name, "Auditoría temporal");
+assert.equal(scheduledCreation.action.dueDate, "2026-09-20");
+
 const alertState = normalizeState({
   budgets: { "comida-fuera": 20000 },
   movements: [{ id: "meal", type: "expense", merchant: "RESTAURANTE", amount: 23700, date: "2026-09-13", category: "comida-fuera" }],
