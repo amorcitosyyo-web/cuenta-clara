@@ -122,6 +122,9 @@ const detailState = normalizeState({
 const categoryDetail = telegramWebhook._test.findCategoryDetailRequest("porfa", detailState, "grupo");
 assert.equal(categoryDetail.category.id, "comida-fuera");
 assert.match(telegramWebhook._test.summarizeCategoryMovements(detailState, categoryDetail.category, { label: "prueba", start: "2026-09-01", end: "2026-09-30" }), /RESTAURANTE A/);
+const maximumDetail = telegramWebhook._test.findCategoryDetailRequest("¿Y cuál de esos es el más alto?", detailState, "grupo");
+assert.equal(maximumDetail.mode, "maximum");
+assert.match(telegramWebhook._test.summarizeCategoryMaximum(detailState, maximumDetail.category, maximumDetail.period), /RESTAURANTE A/);
 assert.deepEqual(telegramWebhook._test.findClassificationReview("esa clasificación está bien?", normalizeState({ movements: [{ id: "bread", type: "expense", merchant: "FRESH MARKET", amount: 900, date: "2026-09-13", category: "alimentacion" }] }), "FRESH MARKET · Alimentación · pan para desayuno"), { merchant: "FRESH MARKET", category: "alimentacion", reason: "una compra de alimentación" });
 
 const alertState = normalizeState({
