@@ -7,7 +7,7 @@ const { resolveMailboxEmail, _test: emailSyncTest } = require("../lib/email-agen
 const { normalizeMakeItems } = require("../lib/make-payload.js");
 const { executeAction } = require("../lib/action-tools.js");
 const telegramWebhook = require("../lib/telegram-webhook.js");
-const { cycleFor, executeProposedAction, runAgentTurn } = require("../lib/agent-core.js");
+const { cycleFor, executeProposedAction, runAgentTurn, _test: agentCoreTest } = require("../lib/agent-core.js");
 
 const state = normalizeState({});
 
@@ -35,6 +35,9 @@ assert.equal(normalizeMakeItems(rawMakePayload).length, 2);
 
 assert.deepEqual(cycleFor("2026-09-06"), { id: "2026-08-07:2026-09-06", start: "2026-08-07", end: "2026-09-06" });
 assert.deepEqual(cycleFor("2026-09-07"), { id: "2026-09-07:2026-10-06", start: "2026-09-07", end: "2026-10-06" });
+const contextualMessages = agentCoreTest.buildAgentMessages("porfa", { month: "2026-09" }, [{ role: "assistant", text: "¿Quieres que detalle los movimientos de comida fuera?" }], "Comida fuera: CRC 23,700");
+assert.equal(contextualMessages.at(-1).content, "porfa");
+assert.match(contextualMessages.map((item) => item.content).join("\n"), /comida fuera/i);
 
 const automatic = executeProposedAction({
   state, channel: "telegram", conversationId: "group", actor: "member-1",
