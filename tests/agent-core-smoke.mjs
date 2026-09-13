@@ -102,5 +102,8 @@ assert.equal(recurringCandidates[1].amount, 39921);
 assert.equal(recurringCandidates[1].dueDay, 24);
 assert.equal(telegramWebhook._test.isRecurringAnalysisRequest("Analiza todos los meses disponibles y determina pagos recurrentes"), true);
 assert.equal(telegramWebhook._test.isRecurringAnalysisRequest("Analisa todos los meses disponibles y determina pagos recurrentes"), true);
+assert.equal(telegramWebhook._test.detectEmailIntent("de nuevo porfa", {
+  agentMemory: { telegramSessions: { grupo: [{ role: "user", text: "lee el correo porfa" }, { role: "assistant", text: "Make respondió 0 movimientos nuevos" }] } },
+}, "grupo").matched, true);
 
 console.log("agent-core smoke: ok");
