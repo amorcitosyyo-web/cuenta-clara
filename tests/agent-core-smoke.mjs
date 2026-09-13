@@ -8,6 +8,7 @@ const { normalizeMakeItems } = require("../lib/make-payload.js");
 const { executeAction } = require("../lib/action-tools.js");
 const telegramWebhook = require("../lib/telegram-webhook.js");
 const { cycleFor, executeProposedAction, runAgentTurn, _test: agentCoreTest } = require("../lib/agent-core.js");
+const { collectBudgetAlerts, formatBudgetAlerts } = require("../lib/budget-alerts.js");
 
 const state = normalizeState({});
 
@@ -122,5 +123,15 @@ const categoryDetail = telegramWebhook._test.findCategoryDetailRequest("porfa", 
 assert.equal(categoryDetail.category.id, "comida-fuera");
 assert.match(telegramWebhook._test.summarizeCategoryMovements(detailState, categoryDetail.category, { label: "prueba", start: "2026-09-01", end: "2026-09-30" }), /RESTAURANTE A/);
 assert.deepEqual(telegramWebhook._test.findClassificationReview("esa clasificación está bien?", normalizeState({ movements: [{ id: "bread", type: "expense", merchant: "FRESH MARKET", amount: 900, date: "2026-09-13", category: "alimentacion" }] }), "FRESH MARKET · Alimentación · pan para desayuno"), { merchant: "FRESH MARKET", category: "alimentacion", reason: "una compra de alimentación" });
+
+const alertState = normalizeState({
+  budgets: { "comida-fuera": 20000 },
+  movements: [{ id: "meal", type: "expense", merchant: "RESTAURANTE", amount: 23700, date: "2026-09-13", category: "comida-fuera" }],
+});
+const firstAlerts = collectBudgetAlerts(alertState, { month: "2026-09", categories: [{ id: "comida-fuera", name: "Comida fuera" }] });
+assert.equal(firstAlerts.length, 1);
+assert.equal(firstAlerts[0].level, 100);
+assert.match(formatBudgetAlerts(firstAlerts), /excedido por CRC 3\s700,00/i);
+assert.equal(collectBudgetAlerts(alertState, { month: "2026-09" }).length, 0);
 
 console.log("agent-core smoke: ok");
