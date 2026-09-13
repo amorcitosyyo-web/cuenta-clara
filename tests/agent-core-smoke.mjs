@@ -3,7 +3,8 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { fetchSupabaseState, normalizeState } = require("../lib/_agent.js");
-const { resolveMailboxEmail } = require("../lib/email-agent-sync.js");
+const { resolveMailboxEmail, _test: emailSyncTest } = require("../lib/email-agent-sync.js");
+const { normalizeMakeItems } = require("../lib/make-payload.js");
 const { executeAction } = require("../lib/action-tools.js");
 const telegramWebhook = require("../lib/telegram-webhook.js");
 const { cycleFor, executeProposedAction, runAgentTurn } = require("../lib/agent-core.js");
@@ -26,6 +27,11 @@ process.env.SUPABASE_URL = "https://example.test";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "test-key";
 assert.equal(await resolveMailboxEmail("owner-id", ""), "familia@example.com");
 globalThis.fetch = originalFetch;
+
+const makeBundles = '{"items":[{"source":"gmail","sourceId":"one","date":"Sep 13, 2026","merchant":"FRESH MARKET","amount":"900.00"}]}{"items":[{"source":"gmail","sourceId":"two","date":"Sep 12, 2026","merchant":"MINI SUPER","amount":"2100.00"}]}'
+const rawMakePayload = await emailSyncTest.readPayload({ text: async () => makeBundles });
+assert.equal(typeof rawMakePayload, "string");
+assert.equal(normalizeMakeItems(rawMakePayload).length, 2);
 
 assert.deepEqual(cycleFor("2026-09-06"), { id: "2026-08-07:2026-09-06", start: "2026-08-07", end: "2026-09-06" });
 assert.deepEqual(cycleFor("2026-09-07"), { id: "2026-09-07:2026-10-06", start: "2026-09-07", end: "2026-10-06" });
