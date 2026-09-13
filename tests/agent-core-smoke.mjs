@@ -165,6 +165,10 @@ const punctuationBudget = telegramWebhook._test.findOperationalAction("pon el pr
 assert.equal(punctuationBudget.status, "ready");
 assert.equal(punctuationBudget.action.categoryId, "audit-category");
 
+const goalCreation = telegramWebhook._test.findOperationalAction("crea meta Auditoría temporal de CRC 1000.", normalizeState({}));
+assert.equal(goalCreation.status, "ready");
+assert.equal(goalCreation.action.name, "Auditoría temporal");
+
 const alertState = normalizeState({
   budgets: { "comida-fuera": 20000 },
   movements: [{ id: "meal", type: "expense", merchant: "RESTAURANTE", amount: 23700, date: "2026-09-13", category: "comida-fuera" }],
