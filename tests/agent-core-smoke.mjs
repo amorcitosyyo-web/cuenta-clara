@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { fetchSupabaseState, normalizeState } = require("../lib/_agent.js");
+const { resolveMailboxEmail } = require("../lib/email-agent-sync.js");
 const { executeAction } = require("../lib/action-tools.js");
 const { cycleFor, executeProposedAction, runAgentTurn } = require("../lib/agent-core.js");
 
@@ -18,6 +19,12 @@ const retried = await fetchSupabaseState("https://example.test/state", {});
 globalThis.fetch = originalFetch;
 assert.equal(retried.ok, true);
 assert.equal(supabaseAttempts, 2);
+
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ email: "familia@example.com" }) });
+process.env.SUPABASE_URL = "https://example.test";
+process.env.SUPABASE_SERVICE_ROLE_KEY = "test-key";
+assert.equal(await resolveMailboxEmail("owner-id", ""), "familia@example.com");
+globalThis.fetch = originalFetch;
 
 assert.deepEqual(cycleFor("2026-09-06"), { id: "2026-08-07:2026-09-06", start: "2026-08-07", end: "2026-09-06" });
 assert.deepEqual(cycleFor("2026-09-07"), { id: "2026-09-07:2026-10-06", start: "2026-09-07", end: "2026-10-06" });
