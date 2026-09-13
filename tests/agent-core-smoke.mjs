@@ -108,5 +108,15 @@ assert.equal(telegramWebhook._test.detectEmailIntent("de nuevo porfa", {
 assert.equal(telegramWebhook._test.detectEmailIntent("de nuevo porfa", {
   agentMemory: { telegramSessions: { grupo: [] } },
 }, "grupo", "Listo 💌. Make respondió 0 movimientos nuevos; no había nada nuevo que agregar.").matched, true);
+const detailState = normalizeState({
+  movements: [
+    { id: "food-1", type: "expense", merchant: "RESTAURANTE A", amount: 8000, date: "2026-09-12", category: "comida-fuera" },
+    { id: "food-2", type: "expense", merchant: "RESTAURANTE B", amount: 1100, date: "2026-09-12", category: "comida-fuera" },
+  ],
+  agentMemory: { telegramSessions: { grupo: [{ role: "assistant", text: "En comida fuera se han gastado CRC 9,100. ¿Quieres que te detalle los movimientos?" }] } },
+});
+const categoryDetail = telegramWebhook._test.findCategoryDetailRequest("porfa", detailState, "grupo");
+assert.equal(categoryDetail.category.id, "comida-fuera");
+assert.match(telegramWebhook._test.summarizeCategoryMovements(detailState, categoryDetail.category, { label: "prueba", start: "2026-09-01", end: "2026-09-30" }), /RESTAURANTE A/);
 
 console.log("agent-core smoke: ok");
