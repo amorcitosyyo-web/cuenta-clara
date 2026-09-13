@@ -40,6 +40,10 @@ assert.deepEqual(cycleFor("2026-09-07"), { id: "2026-09-07:2026-10-06", start: "
 const contextualMessages = agentCoreTest.buildAgentMessages("porfa", { month: "2026-09" }, [{ role: "assistant", text: "¿Quieres que detalle los movimientos de comida fuera?" }], "Comida fuera: CRC 23,700");
 assert.equal(contextualMessages.at(-1).content, "porfa");
 assert.match(contextualMessages.map((item) => item.content).join("\n"), /comida fuera/i);
+assert.deepEqual(agentCoreTest.parseModelResponse({ output: [
+  { type: "message", content: [{ type: "output_text", text: "Entendido." }] },
+  { type: "function_call", name: "financial_action", arguments: '{"type":"set_budget","data":{"amount":20000}}' },
+] }), { text: "Entendido.", action: { type: "set_budget", data: { amount: 20000 } } });
 
 const automatic = executeProposedAction({
   state, channel: "telegram", conversationId: "group", actor: "member-1",
