@@ -152,6 +152,14 @@ assert.match(telegramWebhook._test.summarizeCategoryMaximum(detailState, maximum
 assert.equal(telegramWebhook._test.isMonthMovementsQuestion("¿Cuál fue el gasto mayor de comida fuera este mes?", detailState), false);
 assert.deepEqual(telegramWebhook._test.findClassificationReview("esa clasificación está bien?", normalizeState({ movements: [{ id: "bread", type: "expense", merchant: "FRESH MARKET", amount: 900, date: "2026-09-13", category: "alimentacion" }] }), "FRESH MARKET · Alimentación · pan para desayuno"), { merchant: "FRESH MARKET", category: "alimentacion", reason: "una compra de alimentación" });
 
+const movementUpdateState = normalizeState({
+  movements: [{ id: "audit-movement", type: "expense", merchant: "PRUEBA AUDITORIA", amount: 123, date: "2026-09-13", category: "comida-fuera" }],
+});
+const movementUpdate = telegramWebhook._test.findOperationalAction("cambia la categoría de PRUEBA AUDITORIA a Alimentación", movementUpdateState);
+assert.equal(movementUpdate.status, "ready");
+assert.equal(movementUpdate.action.type, "update_movement");
+assert.equal(movementUpdate.action.data.category, "alimentacion");
+
 const alertState = normalizeState({
   budgets: { "comida-fuera": 20000 },
   movements: [{ id: "meal", type: "expense", merchant: "RESTAURANTE", amount: 23700, date: "2026-09-13", category: "comida-fuera" }],
