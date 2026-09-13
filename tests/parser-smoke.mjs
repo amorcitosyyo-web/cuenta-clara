@@ -38,7 +38,7 @@ for (const sample of samples) {
 if (failed) process.exitCode = 1;
 
 const require = createRequire(import.meta.url);
-const { mapSpreadsheetRows, readDelimited } = require("../api/document-tools.js");
+const { mapSpreadsheetRows, readDelimited } = require("../lib/document-tools.js");
 const rows = readDelimited(Buffer.from('Fecha,Comercio,Monto,Categoría\n2026-09-09,Automercado,"5,000.00",Alimentación\n'));
 const mapped = mapSpreadsheetRows(rows, "csv");
 assert.equal(mapped.length, 1);
