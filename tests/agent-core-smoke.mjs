@@ -160,6 +160,11 @@ assert.equal(movementUpdate.status, "ready");
 assert.equal(movementUpdate.action.type, "update_movement");
 assert.equal(movementUpdate.action.data.category, "alimentacion");
 
+const punctuationCategoryState = normalizeState({ customCategories: [{ id: "audit-category", name: "Auditoría temporal.", kind: "expense", keywords: [] }] });
+const punctuationBudget = telegramWebhook._test.findOperationalAction("pon el presupuesto de Auditoría temporal en CRC 1000.", punctuationCategoryState);
+assert.equal(punctuationBudget.status, "ready");
+assert.equal(punctuationBudget.action.categoryId, "audit-category");
+
 const alertState = normalizeState({
   budgets: { "comida-fuera": 20000 },
   movements: [{ id: "meal", type: "expense", merchant: "RESTAURANTE", amount: 23700, date: "2026-09-13", category: "comida-fuera" }],
