@@ -5,6 +5,7 @@ const require = createRequire(import.meta.url);
 const { fetchSupabaseState, normalizeState } = require("../lib/_agent.js");
 const { resolveMailboxEmail } = require("../lib/email-agent-sync.js");
 const { executeAction } = require("../lib/action-tools.js");
+const telegramWebhook = require("../lib/telegram-webhook.js");
 const { cycleFor, executeProposedAction, runAgentTurn } = require("../lib/agent-core.js");
 
 const state = normalizeState({});
@@ -57,5 +58,25 @@ assert.equal(state.movements.some((item) => item.id === movementId), false);
 assert.equal(state.trash.length, 1);
 executeAction(state, { type: "restore_trash", id: state.trash[0].id, actor: "member-3", channel: "telegram" });
 assert.equal(state.movements.some((item) => item.id === movementId), true);
+
+// Regression: a request to turn known Claro charges into a monthly payment
+// must never be mistaken for an incomplete manual expense.
+const recurringState = normalizeState({
+  movements: [
+    { id: "internet-a", type: "expense", merchant: "CLARO POST PAGO 61393601", amount: 28433, date: "2026-08-24", category: "telefono-internet" },
+    { id: "internet-b", type: "expense", merchant: "CLARO POST PAGO 64318363", amount: 11488, date: "2026-08-24", category: "telefono-internet" },
+  ],
+});
+const recurring = telegramWebhook._test.findRecurringPaymentRequest(
+  "Pon pago de internet unificado como recurrente, el 20 se paga",
+  recurringState,
+  "group-test",
+);
+assert.equal(recurring.status, "ready");
+assert.equal(recurring.action.type, "create_scheduled_payment");
+assert.equal(recurring.action.name, "Pago de internet");
+assert.equal(recurring.action.amount, 39921);
+assert.equal(recurring.action.dueDate.endsWith("-20"), true);
+assert.equal(telegramWebhook._test.isIndependentFinancialRequest("Revisa los montos y fechas del internet"), true);
 
 console.log("agent-core smoke: ok");
