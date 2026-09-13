@@ -162,5 +162,8 @@ assert.match(formatBudgetAlerts(firstAlerts), /excedido por CRC 3\s700,00/i);
 assert.equal(collectBudgetAlerts(alertState, { month: "2026-09" }).length, 0);
 assert.equal(agentJobs._test.scheduledOccurrence({ dueDate: "2026-09-30", repeat: "monthly" }, "2026-02"), "2026-02-28");
 assert.equal(agentJobs._test.scheduledOccurrence({ dueDate: "2026-09-20", repeat: "monthly" }, "2026-10"), "2026-10-20");
+const automationState = normalizeState({});
+agentJobs._test.recordAutomationRun(automationState, "email", { received: 4, processed: 4 });
+assert.deepEqual(automationState.agentMemory.automationRuns[0].result, { received: 4, processed: 4 });
 
 console.log("agent-core smoke: ok");
