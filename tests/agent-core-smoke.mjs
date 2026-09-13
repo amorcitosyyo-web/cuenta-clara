@@ -45,6 +45,25 @@ assert.deepEqual(agentCoreTest.parseModelResponse({ output: [
   { type: "function_call", name: "financial_action", arguments: '{"type":"set_budget","data":{"amount":20000}}' },
 ] }), { text: "Entendido.", action: { type: "set_budget", data: { amount: 20000 } } });
 
+// A general question must reach the model with its tool schema. This caught a
+// production bug where the schema was accidentally scoped inside the prompt
+// builder, making every non-rule-based request fail before the model ran.
+const previousKey = process.env.OPENAI_API_KEY;
+const previousModel = process.env.OPENAI_AGENT_MODEL;
+process.env.OPENAI_API_KEY = "test-key";
+process.env.OPENAI_AGENT_MODEL = "gpt-5-mini";
+let responseRequest;
+globalThis.fetch = async (_url, options) => {
+  responseRequest = JSON.parse(options.body);
+  return { ok: true, json: async () => ({ output: [{ type: "message", content: [{ type: "output_text", text: "Vigila comidas fuera esta semana." }] }] }) };
+};
+const modelReply = await runAgentTurn({ state: normalizeState({}), channel: "telegram", conversationId: "model-test", text: "¿Qué debería vigilar esta semana?" });
+globalThis.fetch = originalFetch;
+if (previousKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = previousKey;
+if (previousModel === undefined) delete process.env.OPENAI_AGENT_MODEL; else process.env.OPENAI_AGENT_MODEL = previousModel;
+assert.equal(modelReply.text, "Vigila comidas fuera esta semana.");
+assert.equal(responseRequest.tools[0].name, "financial_action");
+
 const automatic = executeProposedAction({
   state, channel: "telegram", conversationId: "group", actor: "member-1",
   action: { type: "create_movement", data: { type: "expense", merchant: "Automercado", amount: 5000, date: "2026-09-09", category: "alimentacion", source: "receipt", confidence: 0.95 } },
