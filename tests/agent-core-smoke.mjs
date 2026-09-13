@@ -9,6 +9,7 @@ const { executeAction } = require("../lib/action-tools.js");
 const telegramWebhook = require("../lib/telegram-webhook.js");
 const { cycleFor, executeProposedAction, runAgentTurn, _test: agentCoreTest } = require("../lib/agent-core.js");
 const { collectBudgetAlerts, formatBudgetAlerts } = require("../lib/budget-alerts.js");
+const agentJobs = require("../lib/agent-jobs.js");
 
 const state = normalizeState({});
 
@@ -136,5 +137,7 @@ assert.equal(firstAlerts.length, 1);
 assert.equal(firstAlerts[0].level, 100);
 assert.match(formatBudgetAlerts(firstAlerts), /excedido por CRC 3\s700,00/i);
 assert.equal(collectBudgetAlerts(alertState, { month: "2026-09" }).length, 0);
+assert.equal(agentJobs._test.scheduledOccurrence({ dueDate: "2026-09-30", repeat: "monthly" }, "2026-02"), "2026-02-28");
+assert.equal(agentJobs._test.scheduledOccurrence({ dueDate: "2026-09-20", repeat: "monthly" }, "2026-10"), "2026-10-20");
 
 console.log("agent-core smoke: ok");
