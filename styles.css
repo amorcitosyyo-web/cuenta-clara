@@ -47,6 +47,12 @@ body.auth-locked .app-shell {
   display: none;
 }
 
+/* The sign-in view is intentionally only the private access form. */
+body.auth-locked #advisorOpenBtn,
+body.auth-locked #advisorDock {
+  display: none !important;
+}
+
 body.auth-locked {
   display: grid;
   place-items: center;

@@ -185,6 +185,10 @@ async function init() {
   bindEvents();
   const remoteReady = await setupRemoteSync();
   if (remoteReady === "locked") return;
+  // The first authenticated visit completes the additive migration from the
+  // legacy JSON state to the agent tables. The server verifies count and
+  // totals before marking it active; the JSON is never deleted here.
+  await activateStructuredMigration();
   hydrateAdvisorMessages();
   populateSelects();
   setToday();
@@ -346,6 +350,10 @@ function showAuthGate(message = "") {
   document.body.classList.add("auth-locked");
   els.authScreen.hidden = false;
   els.signOutBtn.hidden = true;
+  // The advisor must never be available on the sign-in screen. Closing it
+  // also prevents a previously open dock from flashing during sign-out.
+  els.advisorOpenBtn.hidden = true;
+  closeAdvisorDock();
   if (message) els.authStatus.textContent = message;
 }
 
@@ -353,6 +361,40 @@ function showApp() {
   document.body.classList.remove("auth-locked");
   els.authScreen.hidden = true;
   els.signOutBtn.hidden = !remote.enabled;
+  els.advisorOpenBtn.hidden = false;
+}
+
+async function activateStructuredMigration() {
+  if (!remote.enabled || !remote.ready || state.data.meta?.structuredStorageEnabled) return;
+
+  try {
+    const response = await fetch("/api/agent-migration", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(await getAuthHeader()),
+      },
+      body: JSON.stringify({ source: "web-login" }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.verified) {
+      console.warn("La migración estructurada aún no se activó.", payload.error || payload);
+      return;
+    }
+
+    // Keep the local copy aligned so its next regular save cannot erase the
+    // server-side activation marker.
+    state.data.meta = {
+      ...(state.data.meta || {}),
+      structuredStorageEnabled: true,
+      structuredStorageVerifiedAt: new Date().toISOString(),
+    };
+    window.cuentaClaraDebug.migration = { verified: true, check: payload.check };
+  } catch (error) {
+    // A failed activation is deliberately non-destructive: the legacy JSON
+    // continues to be the source used by the existing app.
+    console.warn("No se pudo activar la migración estructurada.", error);
+  }
 }
 
 async function handleAuthSubmit(event) {
@@ -582,6 +624,10 @@ function normalizeData(data) {
       }));
 
   const normalized = {
+    // Keep agent-only structured collections intact even though this version
+    // of the web UI does not render every one yet. Without this, a normal
+    // browser save could silently drop accounts, cards and planning memory.
+    ...data,
     movements: Array.isArray(data.movements) ? data.movements : [],
     pendingMovements: Array.isArray(data.pendingMovements) ? data.pendingMovements : [],
     budgets: data.budgets || {},
@@ -591,6 +637,15 @@ function normalizeData(data) {
     merchantRules: Array.isArray(data.merchantRules) ? data.merchantRules : [],
     scheduledPayments: Array.isArray(data.scheduledPayments) ? data.scheduledPayments : [],
     savingsAccounts: Array.isArray(data.savingsAccounts) ? data.savingsAccounts : [],
+    accounts: Array.isArray(data.accounts) ? data.accounts : [],
+    cards: Array.isArray(data.cards) ? data.cards : [],
+    accountBalances: Array.isArray(data.accountBalances) ? data.accountBalances : [],
+    incomePlans: Array.isArray(data.incomePlans) ? data.incomePlans : [],
+    plannedTransfers: Array.isArray(data.plannedTransfers) ? data.plannedTransfers : [],
+    monthlyPlans: Array.isArray(data.monthlyPlans) ? data.monthlyPlans : [],
+    receiptRecords: Array.isArray(data.receiptRecords) ? data.receiptRecords : [],
+    auditLog: Array.isArray(data.auditLog) ? data.auditLog.slice(-500) : [],
+    trash: Array.isArray(data.trash) ? data.trash : [],
     agentMemory: {
       goals: [],
       notes: [],
@@ -603,6 +658,7 @@ function normalizeData(data) {
       chatHistory: Array.isArray(data.agentMemory?.chatHistory) ? data.agentMemory.chatHistory : [],
     },
     meta: {
+      ...(data.meta || {}),
       updatedAt: data.meta?.updatedAt || new Date(0).toISOString(),
     },
   };
