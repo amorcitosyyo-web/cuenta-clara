@@ -79,4 +79,21 @@ assert.equal(recurring.action.amount, 39921);
 assert.equal(recurring.action.dueDate.endsWith("-20"), true);
 assert.equal(telegramWebhook._test.isIndependentFinancialRequest("Revisa los montos y fechas del internet"), true);
 
+const recurringHistory = normalizeState({
+  movements: [
+    { id: "rent-jun", type: "expense", merchant: "ALQUILER CASA", amount: 260000, date: "2026-06-01", category: "vivienda" },
+    { id: "rent-jul", type: "expense", merchant: "ALQUILER CASA", amount: 260000, date: "2026-07-01", category: "vivienda" },
+    { id: "rent-aug", type: "expense", merchant: "ALQUILER CASA", amount: 260000, date: "2026-08-01", category: "vivienda" },
+    { id: "claro-one", type: "expense", merchant: "CLARO POST PAGO 61393601", amount: 28433, date: "2026-08-24", category: "telefono-internet" },
+    { id: "claro-two", type: "expense", merchant: "CLARO POST PAGO 64318363", amount: 11488, date: "2026-08-24", category: "telefono-internet" },
+  ],
+});
+const recurringCandidates = telegramWebhook._test.detectRecurringCandidates(recurringHistory);
+assert.deepEqual(recurringCandidates.map((item) => item.name), ["ALQUILER CASA", "Pago de internet"]);
+assert.equal(recurringCandidates[0].amount, 260000);
+assert.equal(recurringCandidates[0].dueDay, 1);
+assert.equal(recurringCandidates[1].amount, 39921);
+assert.equal(recurringCandidates[1].dueDay, 24);
+assert.equal(telegramWebhook._test.isRecurringAnalysisRequest("Analiza todos los meses disponibles y determina pagos recurrentes"), true);
+
 console.log("agent-core smoke: ok");
