@@ -169,6 +169,17 @@ const goalCreation = telegramWebhook._test.findOperationalAction("crea meta Audi
 assert.equal(goalCreation.status, "ready");
 assert.equal(goalCreation.action.name, "Auditoría temporal");
 
+const savingTransferState = normalizeState({ savingsAccounts: [{ id: "audit-goal", name: "Auditoría temporal", target: 1000 }] });
+const savingTransfer = telegramWebhook._test.findOperationalAction("ahorra CRC 100 en Auditoría temporal.", savingTransferState);
+assert.equal(savingTransfer.status, "ready");
+assert.equal(savingTransfer.action.type, "transfer_saving");
+
+const incomeDraftState = normalizeState({});
+const incomeDraft = telegramWebhook._test.handleMovementDraft("registra un ingreso de CRC 456 hoy, fuente Ingreso auditoría, tipo comisión.", incomeDraftState, "audit");
+assert.equal(incomeDraft.status, "ready");
+assert.equal(incomeDraft.data.merchant, "Ingreso auditoría");
+assert.equal(incomeDraft.data.category, "ingreso");
+
 const alertState = normalizeState({
   budgets: { "comida-fuera": 20000 },
   movements: [{ id: "meal", type: "expense", merchant: "RESTAURANTE", amount: 23700, date: "2026-09-13", category: "comida-fuera" }],
