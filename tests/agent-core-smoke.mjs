@@ -56,6 +56,10 @@ assert.equal(
   ).id,
   "fresh-bank",
 );
+assert.equal(
+  telegramWebhook._test.findCaptionBankMatch("PriceSmart fue hoy", { movements: [priceSmartBankCharge] }).id,
+  "bank-pricesmart",
+);
 
 const originalFetch = globalThis.fetch;
 let supabaseAttempts = 0;
