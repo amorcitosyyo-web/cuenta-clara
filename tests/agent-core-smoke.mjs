@@ -46,6 +46,16 @@ assert.equal(
   telegramWebhook._test.findReceiptDuplicate({ merchant: "PriceSmart", amount: 217566.83, date: "2026-09-13" }, { movements: [priceSmartReceipt, priceSmartBankCharge] }).id,
   "bank-pricesmart",
 );
+// Less certain merchant names do not auto-merge: they are presented as a
+// question whenever the amount and timing also suggest the same purchase.
+assert.ok(telegramWebhook._test.merchantSimilarity("Fresh Market Vive Tibás", "Fresh Market") >= 0.5);
+assert.equal(
+  telegramWebhook._test.findPossibleReceiptDuplicate(
+    { merchant: "Fresh Market Vive Tibás", amount: 900, date: "2026-09-13" },
+    { movements: [{ id: "fresh-bank", type: "expense", merchant: "Fresh Market", amount: 900, date: "2026-09-12" }] },
+  ).id,
+  "fresh-bank",
+);
 
 const originalFetch = globalThis.fetch;
 let supabaseAttempts = 0;
