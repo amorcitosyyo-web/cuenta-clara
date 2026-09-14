@@ -17,12 +17,19 @@ const state = normalizeState({});
 const receiptCategories = [
   { id: "alimentacion", name: "Alimentación" },
   { id: "hogar", name: "Hogar" },
+  { id: "compras-personales", name: "Compras personales" },
 ];
 const receiptItems = normalizeReceiptItems([
   { name: "Leche", amount: 1500, category: "Alimentación" },
   { name: "Detergente", amount: 2500, category: "hogar" },
 ], receiptCategories, "alimentacion");
 assert.deepEqual(receiptItems.map((item) => item.category), ["alimentacion", "hogar"]);
+const mixedReceiptItems = normalizeReceiptItems([
+  { name: "Papel Toalla", amount: 3000, category: "alimentacion" },
+  { name: "Colgate MW", amount: 2500, category: "alimentacion" },
+  { name: "Bistec Solo", amount: 5000, category: "alimentacion" },
+], receiptCategories, "alimentacion");
+assert.deepEqual(mixedReceiptItems.map((item) => item.category), ["hogar", "compras-personales", "alimentacion"]);
 const splitExpense = { type: "expense", amount: 4500, category: "alimentacion", receiptItems };
 assert.deepEqual(expenseAllocations(splitExpense, receiptCategories), [
   { category: "alimentacion", amount: 1687.5, itemized: true },
