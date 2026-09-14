@@ -542,6 +542,23 @@ body.auth-locked .auth-screen {
   text-align: right;
 }
 
+.movement-splits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.movement-splits span {
+  border: 1px solid rgba(185, 217, 196, 0.22);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.movement-splits b { color: var(--text); }
+
 .movement-side {
   display: grid;
   justify-items: end;

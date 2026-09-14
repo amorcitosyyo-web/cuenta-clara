@@ -2713,7 +2713,7 @@ function getFilteredHistoryRows() {
     .filter((item) => !dateFrom || item.date >= dateFrom)
     .filter((item) => !dateTo || item.date <= dateTo)
     .filter((item) => type === "all" || item.type === type)
-    .filter((item) => category === "all" || item.category === category)
+    .filter((item) => category === "all" || item.category === category || movementCategoryAllocations(item).some((allocation) => allocation.category === category))
     .filter((item) => matchesHistorySearch(item, search))
     .sort((a, b) => b.date.localeCompare(a.date));
 }
@@ -3274,12 +3274,17 @@ function renderMovementRow(item) {
   const receiptLink = item.receipt?.image
     ? ` · <a class="inline-link" href="${item.receipt.image}" target="_blank" rel="noopener">Ver foto</a>`
     : "";
+  const allocations = item.type === "expense" ? movementCategoryAllocations(item) : [];
+  const splitDetails = allocations.length > 1
+    ? `<div class="movement-splits" aria-label="Factura dividida por categoría">${allocations.map((allocation) => `<span>${escapeHtml(categoryName(allocation.category))}: <b>${money(allocation.amount)}</b></span>`).join("")}</div>`
+    : "";
 
   return `
     <article class="movement-row">
       <div>
         <strong>${escapeHtml(item.merchant || categoryName(item.category))}</strong>
         <p>${displayDate(item.date)} · ${config.label} · ${categoryName(item.category)}${item.note ? ` · ${escapeHtml(item.note)}` : ""}${receiptLink}</p>
+        ${splitDetails}
       </div>
       <div class="movement-side">
         <strong class="${config.className}">${config.sign}${money(Math.abs(item.amount))}</strong>
@@ -3326,19 +3331,27 @@ function calculateTotals(movements) {
 
 function groupExpensesByCategory(expenses) {
   return expenses.reduce((group, item) => {
-    const lines = Array.isArray(item.receiptItems) ? item.receiptItems : (Array.isArray(item.receipt?.items) ? item.receipt.items : []);
-    const validLines = lines.map((line) => ({ category: line.category || item.category, amount: Number(line.amount || line.precio || 0) }))
-      .filter((line) => line.amount > 0);
-    const itemizedTotal = validLines.reduce((sum, line) => sum + line.amount, 0);
-    if (!validLines.length || itemizedTotal > Number(item.amount || 0) + 0.02) {
-      group[item.category] = (group[item.category] || 0) + item.amount;
-      return group;
-    }
-    validLines.forEach((line) => { group[line.category] = (group[line.category] || 0) + line.amount; });
-    const remainder = Number(item.amount || 0) - itemizedTotal;
-    if (remainder > 0.01) group[item.category] = (group[item.category] || 0) + remainder;
+    movementCategoryAllocations(item).forEach((allocation) => {
+      group[allocation.category] = (group[allocation.category] || 0) + allocation.amount;
+    });
     return group;
   }, {});
+}
+
+function movementCategoryAllocations(item) {
+  if (!item || item.type !== "expense") return [];
+  const total = Number(item.amount || 0);
+  const lines = Array.isArray(item.receiptItems) ? item.receiptItems : (Array.isArray(item.receipt?.items) ? item.receipt.items : []);
+  const validLines = lines.map((line) => ({ category: line.category || item.category, amount: Number(line.amount || line.precio || 0) }))
+    .filter((line) => line.category && line.amount > 0);
+  const itemizedTotal = validLines.reduce((sum, line) => sum + line.amount, 0);
+  if (!validLines.length || !(total > 0) || itemizedTotal > total + 0.02) return [{ category: item.category, amount: total }];
+  const factor = total / itemizedTotal;
+  const grouped = validLines.reduce((result, line) => {
+    result[line.category] = (result[line.category] || 0) + (line.amount * factor);
+    return result;
+  }, {});
+  return Object.entries(grouped).map(([category, amount]) => ({ category, amount }));
 }
 
 function getSavedForAccount(accountId) {
