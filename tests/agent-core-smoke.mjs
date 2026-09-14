@@ -217,6 +217,18 @@ const incomeDeletion = telegramWebhook._test.findDeleteRequest("elimina el ingre
 assert.equal(incomeDeletion.status, "ready");
 assert.equal(incomeDeletion.movement.id, "income-audit");
 
+// A natural deletion request must resolve to the real ledger id before the
+// confirmation is created. Otherwise the later “sí” has nothing executable.
+const deletionState = normalizeState({ movements: [
+  { id: "receipt-price-smart", type: "expense", merchant: "PriceSmart", amount: 217566.83, date: "2026-09-13" },
+  { id: "bank-price-smart", type: "expense", merchant: "PRICE SMART", amount: 217566.83, date: "2026-09-13", note: "BAC ref 625701001309" },
+] });
+assert.equal(agentCoreTest.deleteMovementRequest("sí, elimina el gasto de PriceSmart", deletionState).movement.id, "receipt-price-smart");
+const deletionConfirmation = executeProposedAction({ state: deletionState, channel: "telegram", conversationId: "delete-test", actor: "member", action: { type: "delete_movement", id: "receipt-price-smart" } });
+assert.match(deletionConfirmation.text, /confirmación/i);
+const pendingDelete = deletionState.agentMemory.pendingActions["telegram:delete-test"];
+assert.equal(pendingDelete.action.id, "receipt-price-smart");
+
 const scheduledCreation = telegramWebhook._test.findOperationalAction("crea pago programado Auditoría temporal por CRC 789 para el 20 de septiembre, mensual, categoría hogar.", normalizeState({}));
 assert.equal(scheduledCreation.status, "ready");
 assert.equal(scheduledCreation.action.name, "Auditoría temporal");
