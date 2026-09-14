@@ -203,4 +203,29 @@ const automationState = normalizeState({});
 agentJobs._test.recordAutomationRun(automationState, "email", { received: 4, processed: 4 });
 assert.deepEqual(automationState.agentMemory.automationRuns[0].result, { received: 4, processed: 4 });
 
+const plannerState = normalizeState({});
+agentCoreTest.planningPrompt?.(plannerState, "telegram", "planner-test");
+// The public function is used here because the real flow starts by pressing
+// the planning menu, then advances one answer at a time.
+const { planningPrompt, taskKey } = require("../lib/agent-core.js");
+planningPrompt(plannerState, "telegram", "planner-test");
+let plannerReply = agentCoreTest.continuePlanning(plannerState, "telegram", "planner-test", "1", "tester");
+assert.match(plannerReply.text, /Cuenta 1/i);
+plannerReply = agentCoreTest.continuePlanning(plannerState, "telegram", "planner-test", "BAC principal — pagos hogar", "tester");
+plannerReply = agentCoreTest.continuePlanning(plannerState, "telegram", "planner-test", "50000", "tester");
+plannerReply = agentCoreTest.continuePlanning(plannerState, "telegram", "planner-test", "10000", "tester");
+plannerReply = agentCoreTest.continuePlanning(plannerState, "telegram", "planner-test", "0", "tester");
+plannerReply = agentCoreTest.continuePlanning(plannerState, "telegram", "planner-test", "100000", "tester");
+plannerReply = agentCoreTest.continuePlanning(plannerState, "telegram", "planner-test", "20000", "tester");
+plannerReply = agentCoreTest.continuePlanning(plannerState, "telegram", "planner-test", "no", "tester");
+assert.match(plannerReply.text, /Resumen para aprobar/i);
+plannerReply = agentCoreTest.continuePlanning(plannerState, "telegram", "planner-test", "guardar", "tester");
+assert.match(plannerReply.text, /Necesito confirmación/i);
+const plannerPending = plannerState.agentMemory.pendingActions[taskKey("telegram", "planner-test")];
+assert.equal(plannerPending.action.type, "apply_financial_plan");
+const { result: plannerResult } = executeAction(plannerState, plannerPending.action);
+assert.equal(plannerResult.accounts, 1);
+assert.equal(plannerState.incomePlans.length, 2);
+assert.equal(plannerState.accounts[0].name, "BAC principal");
+
 console.log("agent-core smoke: ok");
