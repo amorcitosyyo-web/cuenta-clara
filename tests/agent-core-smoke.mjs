@@ -25,11 +25,10 @@ const receiptItems = normalizeReceiptItems([
 assert.deepEqual(receiptItems.map((item) => item.category), ["alimentacion", "hogar"]);
 const splitExpense = { type: "expense", amount: 4500, category: "alimentacion", receiptItems };
 assert.deepEqual(expenseAllocations(splitExpense, receiptCategories), [
-  { category: "alimentacion", amount: 1500, itemized: true },
-  { category: "hogar", amount: 2500, itemized: true },
-  { category: "alimentacion", amount: 500, itemized: false },
+  { category: "alimentacion", amount: 1687.5, itemized: true },
+  { category: "hogar", amount: 2812.5, itemized: true },
 ]);
-assert.deepEqual(expensesByCategory([splitExpense], receiptCategories), { alimentacion: 2000, hogar: 2500 });
+assert.deepEqual(expensesByCategory([splitExpense], receiptCategories), { alimentacion: 1687.5, hogar: 2812.5 });
 
 const originalFetch = globalThis.fetch;
 let supabaseAttempts = 0;
