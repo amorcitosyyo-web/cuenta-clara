@@ -60,6 +60,8 @@ assert.equal(
   telegramWebhook._test.findCaptionBankMatch("PriceSmart fue hoy", { movements: [priceSmartBankCharge] }).id,
   "bank-pricesmart",
 );
+assert.equal(telegramWebhook._test.explicitReceiptCaptionDate("PriceSmart — fue hoy"), "2026-09-13");
+assert.equal(telegramWebhook._test.explicitReceiptCaptionDate("Factura del martes"), null);
 
 const originalFetch = globalThis.fetch;
 let supabaseAttempts = 0;
