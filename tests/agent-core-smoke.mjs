@@ -10,8 +10,26 @@ const telegramWebhook = require("../lib/telegram-webhook.js");
 const { cycleFor, executeProposedAction, runAgentTurn, _test: agentCoreTest } = require("../lib/agent-core.js");
 const { collectBudgetAlerts, formatBudgetAlerts } = require("../lib/budget-alerts.js");
 const agentJobs = require("../lib/agent-jobs.js");
+const { expenseAllocations, expensesByCategory, normalizeReceiptItems } = require("../lib/expense-allocations.js");
 
 const state = normalizeState({});
+
+const receiptCategories = [
+  { id: "alimentacion", name: "Alimentación" },
+  { id: "hogar", name: "Hogar" },
+];
+const receiptItems = normalizeReceiptItems([
+  { name: "Leche", amount: 1500, category: "Alimentación" },
+  { name: "Detergente", amount: 2500, category: "hogar" },
+], receiptCategories, "alimentacion");
+assert.deepEqual(receiptItems.map((item) => item.category), ["alimentacion", "hogar"]);
+const splitExpense = { type: "expense", amount: 4500, category: "alimentacion", receiptItems };
+assert.deepEqual(expenseAllocations(splitExpense, receiptCategories), [
+  { category: "alimentacion", amount: 1500, itemized: true },
+  { category: "hogar", amount: 2500, itemized: true },
+  { category: "alimentacion", amount: 500, itemized: false },
+]);
+assert.deepEqual(expensesByCategory([splitExpense], receiptCategories), { alimentacion: 2000, hogar: 2500 });
 
 const originalFetch = globalThis.fetch;
 let supabaseAttempts = 0;

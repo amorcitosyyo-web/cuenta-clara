@@ -3326,7 +3326,17 @@ function calculateTotals(movements) {
 
 function groupExpensesByCategory(expenses) {
   return expenses.reduce((group, item) => {
-    group[item.category] = (group[item.category] || 0) + item.amount;
+    const lines = Array.isArray(item.receiptItems) ? item.receiptItems : (Array.isArray(item.receipt?.items) ? item.receipt.items : []);
+    const validLines = lines.map((line) => ({ category: line.category || item.category, amount: Number(line.amount || line.precio || 0) }))
+      .filter((line) => line.amount > 0);
+    const itemizedTotal = validLines.reduce((sum, line) => sum + line.amount, 0);
+    if (!validLines.length || itemizedTotal > Number(item.amount || 0) + 0.02) {
+      group[item.category] = (group[item.category] || 0) + item.amount;
+      return group;
+    }
+    validLines.forEach((line) => { group[line.category] = (group[line.category] || 0) + line.amount; });
+    const remainder = Number(item.amount || 0) - itemizedTotal;
+    if (remainder > 0.01) group[item.category] = (group[item.category] || 0) + remainder;
     return group;
   }, {});
 }
