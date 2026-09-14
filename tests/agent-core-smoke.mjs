@@ -37,6 +37,16 @@ assert.deepEqual(expenseAllocations(splitExpense, receiptCategories), [
 ]);
 assert.deepEqual(expensesByCategory([splitExpense], receiptCategories), { alimentacion: 1687.5, hogar: 2812.5 });
 
+// A receipt merchant often arrives formatted differently than the bank alert.
+// It must attach to the bank record instead of creating a second expense.
+const priceSmartBankCharge = { id: "bank-pricesmart", type: "expense", merchant: "PRICE SMART", amount: 217566.83, date: "2026-09-13", note: "BAC ref 625701001309" };
+const priceSmartReceipt = { id: "receipt-pricesmart", type: "expense", merchant: "PriceSmart", amount: 217566.83, date: "2026-09-13", source: "receipt", note: "Factura de supermercado" };
+assert.equal(telegramWebhook._test.canonicalMerchant("Price-Smart"), "pricesmart");
+assert.equal(
+  telegramWebhook._test.findReceiptDuplicate({ merchant: "PriceSmart", amount: 217566.83, date: "2026-09-13" }, { movements: [priceSmartReceipt, priceSmartBankCharge] }).id,
+  "bank-pricesmart",
+);
+
 const originalFetch = globalThis.fetch;
 let supabaseAttempts = 0;
 globalThis.fetch = async () => {
