@@ -11,6 +11,7 @@ const { cycleFor, executeProposedAction, getTask, runAgentTurn, _test: agentCore
 const { collectBudgetAlerts, formatBudgetAlerts } = require("../lib/budget-alerts.js");
 const agentJobs = require("../lib/agent-jobs.js");
 const { expenseAllocations, expensesByCategory, normalizeReceiptItems } = require("../lib/expense-allocations.js");
+const { parseExpenseRequest } = require("../lib/expense-recorder.js");
 
 const state = normalizeState({});
 
@@ -19,6 +20,10 @@ const receiptCategories = [
   { id: "hogar", name: "Hogar" },
   { id: "compras-personales", name: "Compras personales" },
 ];
+const manualExpense = parseExpenseRequest("Hoy gasté ₡5.000 en pan para el desayuno", { categories: receiptCategories });
+assert.equal(manualExpense.status, "ready");
+assert.equal(manualExpense.data.merchant, "pan para el desayuno");
+assert.equal(manualExpense.data.amount, 5000);
 const receiptItems = normalizeReceiptItems([
   { name: "Leche", amount: 1500, category: "Alimentación" },
   { name: "Detergente", amount: 2500, category: "hogar" },
