@@ -7,7 +7,7 @@ const { resolveMailboxEmail, _test: emailSyncTest } = require("../lib/email-agen
 const { normalizeMakeItems } = require("../lib/make-payload.js");
 const { executeAction } = require("../lib/action-tools.js");
 const telegramWebhook = require("../lib/telegram-webhook.js");
-const { cycleFor, executeProposedAction, runAgentTurn, _test: agentCoreTest } = require("../lib/agent-core.js");
+const { cycleFor, executeProposedAction, getTask, runAgentTurn, _test: agentCoreTest } = require("../lib/agent-core.js");
 const { collectBudgetAlerts, formatBudgetAlerts } = require("../lib/budget-alerts.js");
 const agentJobs = require("../lib/agent-jobs.js");
 const { expenseAllocations, expensesByCategory, normalizeReceiptItems } = require("../lib/expense-allocations.js");
@@ -308,5 +308,18 @@ naturalPlannerReply = agentCoreTest.continuePlanning(naturalPlannerState, "teleg
 assert.match(naturalPlannerReply.text, /otra cuenta operativa/i);
 naturalPlannerReply = agentCoreTest.continuePlanning(naturalPlannerState, "telegram", "planner-natural", "no", "tester");
 assert.match(naturalPlannerReply.text, /tarjetas/i);
+
+// A multi-account explanation must be summarized and confirmed, never
+// discarded because it contains ordinary words such as "que" or "como".
+const storyPlannerState = normalizeState({});
+planningPrompt(storyPlannerState, "telegram", "planner-story");
+const accountStoryText = "Está mi cuenta personal de Multi: ahí caen mis pagos de salario y a final de mes pasa a la casa. Está la cuenta en pareja, que es ahorro y también dejamos lo de la casa para pagar propietarios. En el BAC entra únicamente lo de Kelia. Luego está la cuenta de gastos fijos y la de gastos variables.";
+let storyPlannerReply = agentCoreTest.continuePlanning(storyPlannerState, "telegram", "planner-story", accountStoryText, "tester");
+assert.match(storyPlannerReply.text, /Esto fue lo que entendí/i);
+assert.match(storyPlannerReply.text, /Cuenta personal Multi/i);
+assert.match(storyPlannerReply.text, /BAC — pagos de Kelia/i);
+storyPlannerReply = agentCoreTest.continuePlanning(storyPlannerState, "telegram", "planner-story", "sí", "tester");
+assert.match(storyPlannerReply.text, /saldo actual/i);
+assert.equal(getTask(storyPlannerState, "telegram", "planner-story").accounts.length, 5);
 
 console.log("agent-core smoke: ok");
