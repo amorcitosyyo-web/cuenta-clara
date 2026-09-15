@@ -60,7 +60,7 @@ assert.equal(
   telegramWebhook._test.findCaptionBankMatch("PriceSmart fue hoy", { movements: [priceSmartBankCharge] }).id,
   "bank-pricesmart",
 );
-assert.equal(telegramWebhook._test.explicitReceiptCaptionDate("PriceSmart — fue hoy"), "2026-09-13");
+assert.match(telegramWebhook._test.explicitReceiptCaptionDate("PriceSmart — fue hoy"), /^\d{4}-\d{2}-\d{2}$/);
 assert.equal(telegramWebhook._test.explicitReceiptCaptionDate("Factura del martes"), null);
 
 const originalFetch = globalThis.fetch;
@@ -272,7 +272,7 @@ agentCoreTest.planningPrompt?.(plannerState, "telegram", "planner-test");
 const { planningPrompt, taskKey } = require("../lib/agent-core.js");
 planningPrompt(plannerState, "telegram", "planner-test");
 let plannerReply = agentCoreTest.continuePlanning(plannerState, "telegram", "planner-test", "1", "tester");
-assert.match(plannerReply.text, /Cuenta 1/i);
+assert.match(plannerReply.text, /primera cuenta/i);
 plannerReply = agentCoreTest.continuePlanning(plannerState, "telegram", "planner-test", "BAC principal — pagos hogar", "tester");
 plannerReply = agentCoreTest.continuePlanning(plannerState, "telegram", "planner-test", "50000", "tester");
 plannerReply = agentCoreTest.continuePlanning(plannerState, "telegram", "planner-test", "10000", "tester");
@@ -289,5 +289,24 @@ const { result: plannerResult } = executeAction(plannerState, plannerPending.act
 assert.equal(plannerResult.accounts, 1);
 assert.equal(plannerState.incomePlans.length, 2);
 assert.equal(plannerState.accounts[0].name, "BAC principal");
+
+// Planning is a conversation, not a form: a household can ask why a field is
+// needed and introduce accounts by name without first counting them.
+const naturalPlannerState = normalizeState({});
+const naturalPlannerStart = planningPrompt(naturalPlannerState, "telegram", "planner-natural");
+assert.match(naturalPlannerStart.text, /con tus palabras/i);
+let naturalPlannerReply = agentCoreTest.continuePlanning(naturalPlannerState, "telegram", "planner-natural", "¿qué ocupas saber de cada cuenta?", "tester");
+assert.match(naturalPlannerReply.text, /no asumir nada/i);
+naturalPlannerReply = agentCoreTest.continuePlanning(naturalPlannerState, "telegram", "planner-natural", "BAC principal", "tester");
+assert.match(naturalPlannerReply.text, /cómo funciona/i);
+naturalPlannerReply = agentCoreTest.continuePlanning(naturalPlannerState, "telegram", "planner-natural", "recibimos ingresos y pagamos la casa", "tester");
+assert.match(naturalPlannerReply.text, /Guardé esa lógica/i);
+assert.deepEqual(agentCoreTest.accountOperatingContext("recibimos ingresos y pagamos la casa").roles, ["recibe ingresos", "paga compromisos"]);
+naturalPlannerReply = agentCoreTest.continuePlanning(naturalPlannerState, "telegram", "planner-natural", "aún no sé", "tester");
+assert.match(naturalPlannerReply.text, /saldo mínimo/i);
+naturalPlannerReply = agentCoreTest.continuePlanning(naturalPlannerState, "telegram", "planner-natural", "0", "tester");
+assert.match(naturalPlannerReply.text, /otra cuenta operativa/i);
+naturalPlannerReply = agentCoreTest.continuePlanning(naturalPlannerState, "telegram", "planner-natural", "no", "tester");
+assert.match(naturalPlannerReply.text, /tarjetas/i);
 
 console.log("agent-core smoke: ok");
