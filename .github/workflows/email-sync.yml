@@ -1,0 +1,57 @@
+name: Cuenta Clara scheduled jobs
+
+# Vercel's Hobby plan only runs cron jobs once a day, which is not enough
+# for reading email 4 times a day. This workflow replaces vercel.json's
+# crons entirely: it calls the exact same endpoint the app already
+# exposes, protected by the same CRON_SECRET the app already checks
+# (see lib/agent-jobs.js -> authorized()). No new surface, no secret
+# ever appears in this file or in logs.
+
+on:
+  schedule:
+    # All times UTC. Costa Rica is UTC-6 year-round (no DST).
+    - cron: "0 14 * * *"  # 08:00 CR - read email
+    - cron: "0 17 * * *"  # 11:00 CR - read email
+    - cron: "0 20 * * *"  # 14:00 CR - read email
+    - cron: "0 2 * * *"   # 20:00 CR (previous day UTC date) - read email
+    - cron: "5 14 * * *"  # 08:05 CR - due payments check (offset 5min so it never collides with the 08:00 email trigger above)
+    - cron: "0 1 * * *"   # 19:00 CR (previous day UTC date) - routine job
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Job to run manually: email, due or routine"
+        required: false
+        default: "email"
+
+permissions:
+  contents: read
+
+jobs:
+  run-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine which job this run is for
+        id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "job=${{ github.event.inputs.job }}" >> "$GITHUB_OUTPUT"
+          else
+            case "${{ github.event.schedule }}" in
+              "0 14 * * *") echo "job=email" >> "$GITHUB_OUTPUT" ;;
+              "0 17 * * *") echo "job=email" >> "$GITHUB_OUTPUT" ;;
+              "0 20 * * *") echo "job=email" >> "$GITHUB_OUTPUT" ;;
+              "0 2 * * *")  echo "job=email" >> "$GITHUB_OUTPUT" ;;
+              "5 14 * * *") echo "job=due" >> "$GITHUB_OUTPUT" ;;
+              "0 1 * * *")  echo "job=routine" >> "$GITHUB_OUTPUT" ;;
+              *) echo "job=email" >> "$GITHUB_OUTPUT" ;;
+            esac
+          fi
+      - name: Call Cuenta Clara sync endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "https://cuenta-clara-rosy.vercel.app/api/sync-email?job=${{ steps.pick.outputs.job }}" \
+            --max-time 60 \
+            --fail-with-body
