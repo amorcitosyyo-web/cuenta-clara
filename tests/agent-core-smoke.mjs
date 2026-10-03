@@ -55,11 +55,30 @@ assert.equal(
 // question whenever the amount and timing also suggest the same purchase.
 assert.ok(telegramWebhook._test.merchantSimilarity("Fresh Market Vive Tibás", "Fresh Market") >= 0.5);
 assert.equal(
-  telegramWebhook._test.findPossibleReceiptDuplicate(
+  (await telegramWebhook._test.findPossibleReceiptDuplicate(
     { merchant: "Fresh Market Vive Tibás", amount: 900, date: "2026-09-13" },
     { movements: [{ id: "fresh-bank", type: "expense", merchant: "Fresh Market", amount: 900, date: "2026-09-12" }] },
-  ).id,
+  )).id,
   "fresh-bank",
+);
+// A dollar purchase is stored with an estimated colones amount; the bank
+// statement charges its own rate, so a small gap must still match.
+assert.equal(
+  (await telegramWebhook._test.findPossibleReceiptDuplicate(
+    { merchant: "SPOTIFY", amount: 4250, date: "2026-10-01" },
+    { movements: [{ id: "spotify-usd", type: "expense", merchant: "Spotify P4775582E0", amount: 4155.99, amountEstimated: true, date: "2026-09-29" }] },
+    4,
+  ))?.id,
+  "spotify-usd",
+);
+// ...but only for estimated amounts: an exact-amount rule still applies to the rest.
+assert.equal(
+  await telegramWebhook._test.findPossibleReceiptDuplicate(
+    { merchant: "SPOTIFY", amount: 4250, date: "2026-10-01" },
+    { movements: [{ id: "spotify-crc", type: "expense", merchant: "Spotify", amount: 4155.99, date: "2026-09-29" }] },
+    4,
+  ),
+  null,
 );
 assert.equal(
   telegramWebhook._test.findCaptionBankMatch("PriceSmart fue hoy", { movements: [priceSmartBankCharge] }).id,
