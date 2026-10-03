@@ -45,6 +45,29 @@ assert.deepEqual(parsed.map((row) => [row.date, row.amount]), [["2026-09-01", 61
 const headerless = rowsFrom([tab("02/09/2026", "PRICE SMART SAN J", "75.973,04"), tab("03/09/2026", "SUPER SALON EPA", "11.000,01")].join("\n"));
 assert.deepEqual(headerless.map((row) => row.amount), [75973.04, 11000.01]);
 
+// 2b) The same statement copied with plain spaces between the columns (what a web
+//     page or a PDF gives) reads exactly like the tab-separated one.
+const spaced = [
+  "Fecha Descripción Débitos",
+  "26/09/2026 VALOR DE TARJETA TITULAR 2.772,00",
+  "25/09/2026 Pago CLARO POST PAGO 61393601 28.433,00",
+  "19/09/2026 SODA ROSITA SAN J  2.000,00",
+  "27/09/2026 UBER *TRIP HELP.UBER.COM . 1.663,20",
+  "01/10/2026 Spotify P4775582E0 S 4.189,34",
+].join("\n");
+const spacedRows = rowsFrom(spaced);
+assert.deepEqual(spacedRows.map((row) => [row.date, row.merchant, row.amount]), [
+  ["2026-09-26", "VALOR DE TARJETA TITULAR", 2772],
+  ["2026-09-25", "Pago CLARO POST PAGO 61393601", 28433],
+  ["2026-09-19", "SODA ROSITA SAN J", 2000],
+  ["2026-09-27", "UBER *TRIP HELP.UBER.COM .", 1663.2],
+  ["2026-10-01", "Spotify P4775582E0 S", 4189.34],
+]);
+assert.equal(_test.looksLikePastedBankTable(spaced), true);
+assert.equal(_test.looksLikePastedBankTable("lista del super:\nleche 1500\npan 800\nhuevos 2.100"), false);
+// A header with no matching rows after it is not a statement either.
+assert.equal(_test.looksLikePastedBankTable("Fecha Descripción Débitos\nsin filas"), false);
+
 // 3) Two identical charges on the same day stay two movements.
 let state = newState();
 let out = await run(rowsFrom([
