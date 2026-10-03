@@ -150,6 +150,39 @@ assert.equal(toTelegramMarkdown("UBER *TRIP HELP.UBER.COM ."), "UBER \\*TRIP HEL
 assert.equal(toTelegramMarkdown("**ANÁLISIS** del mes"), "*ANÁLISIS* del mes", "intentional bold is kept");
 assert.equal(toTelegramMarkdown("**SINPE_MOVIL** x"), "*SINPE*\\_*MOVIL* x", "an escape inside bold closes and reopens it");
 
+// 8d) The first days of a month are purchases from the end of the previous one: a new expense
+//     is dated about three days earlier, using the real calendar (not 30 days per month).
+state = newState();
+out = await run(rowsFrom([
+  tab("Fecha", "Descripción", "Débitos"),
+  tab("01/09/2026", "COMERCIO UNO", "1.000,00"),
+  tab("02/09/2026", "COMERCIO DOS", "2.000,00"),
+  tab("03/09/2026", "COMERCIO TRES", "3.000,00"),
+  tab("04/09/2026", "COMERCIO CUATRO", "4.000,00"),
+  tab("01/10/2026", "COMERCIO CINCO", "5.000,00"),
+  tab("01/03/2026", "COMERCIO SEIS", "6.000,00"),
+  tab("03/03/2026", "COMERCIO SIETE", "7.000,00"),
+].join("\n")), state);
+const dateOf = (merchant) => state.movements.find((m) => m.merchant === merchant);
+assert.equal(dateOf("COMERCIO UNO").date, "2026-08-29", "01/09 -> 29/08");
+assert.equal(dateOf("COMERCIO DOS").date, "2026-08-30");
+assert.equal(dateOf("COMERCIO TRES").date, "2026-08-31");
+assert.equal(dateOf("COMERCIO CUATRO").date, "2026-09-04", "the 4th is left as the bank shows it");
+assert.equal(dateOf("COMERCIO CINCO").date, "2026-09-28", "01/10 belongs to the end of September");
+assert.equal(dateOf("COMERCIO SEIS").date, "2026-02-26", "01/03 -> 26/02: February has 28 days");
+assert.equal(dateOf("COMERCIO SIETE").date, "2026-02-28");
+assert.equal(dateOf("COMERCIO UNO").bankDate, "2026-09-01", "the bank's own date is kept");
+assert.match(dateOf("COMERCIO UNO").note, /Asentado en el banco el 2026-09-01/);
+assert.equal(out.created.length, 7);
+
+// 8e) Matching still uses the bank's date, so a late-August expense already in the app is
+//     recognised by a row dated 02/09 and is not added a second time.
+state = newState([{ id: "aug", type: "expense", merchant: "COMERCIO DOS", amount: 2000, date: "2026-08-30", category: "alimentacion", source: "gmail" }]);
+out = await run(rowsFrom([tab("Fecha", "Descripción", "Débitos"), tab("02/09/2026", "COMERCIO DOS", "2.000,00")].join("\n")), state);
+assert.equal(out.created.length, 0);
+assert.equal(out.duplicates.length, 1);
+assert.equal(state.movements.length, 1);
+
 // 9) Added expenses are sent in pages, not one message each (Telegram group rate limit).
 sent.length = 0;
 state = newState();
