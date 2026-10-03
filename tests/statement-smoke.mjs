@@ -133,6 +133,23 @@ assert.equal(flagged.length, 2);
 assert.ok(flagged.includes("ghost"), "a bank-sourced movement the statement never charged");
 assert.equal(flagged.filter((id) => id === "a" || id === "b").length, 1, "exactly one of the duplicate pair is flagged, the confirmed one is not");
 
+// 8b) Same amount close in time but unrelated names is not a duplicate (two SINPE payments of 2,000).
+state = newState([
+  { id: "plat", type: "expense", merchant: "PLATANITOS", amount: 2000, date: "2026-09-15", category: "alimentacion", source: "gmail" },
+  { id: "joco", type: "expense", merchant: "JOCOTES", amount: 2000, date: "2026-09-15", category: "alimentacion", source: "gmail" },
+]);
+out = await run(rowsFrom([tab("Fecha", "Descripción", "Débitos"), tab("15/09/2026", "SINPE MOVIL Platanitos_____", "2.000,00"), ...filler, tab("30/09/2026", "ULTIMO", "100,00")].join("\n")), state);
+const jocotes = out.unconfirmed.find(({ item }) => item.id === "joco");
+assert.ok(jocotes, "it is still reported: its amount is not in the statement");
+assert.ok(!/duplicado/.test(jocotes.reason), "but not as a duplicate of an unrelated merchant");
+
+// 8c) Merchant names go to Telegram without being read as Markdown.
+const { toTelegramMarkdown } = require("../lib/telegram-format.js");
+assert.equal(toTelegramMarkdown("9. SINPE MOVIL Uber___________"), "9. SINPE MOVIL Uber" + "\\_".repeat(11));
+assert.equal(toTelegramMarkdown("UBER *TRIP HELP.UBER.COM ."), "UBER \\*TRIP HELP.UBER.COM .");
+assert.equal(toTelegramMarkdown("**ANÁLISIS** del mes"), "*ANÁLISIS* del mes", "intentional bold is kept");
+assert.equal(toTelegramMarkdown("**SINPE_MOVIL** x"), "*SINPE*\\_*MOVIL* x", "an escape inside bold closes and reopens it");
+
 // 9) Added expenses are sent in pages, not one message each (Telegram group rate limit).
 sent.length = 0;
 state = newState();

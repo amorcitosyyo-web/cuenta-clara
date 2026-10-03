@@ -267,4 +267,15 @@ await say("consolidar");
 assert.equal(movement("uber").amount, 1071.33);
 assert.ok(store.agentMemory.consolidationArmed["1"]);
 
+// 14) What actually reaches Telegram: underscores and asterisks in a merchant name are escaped
+//     so they stay literal instead of turning the following lines into italics.
+reset(existing());
+calls = [];
+await _test.analyzePastedBankTable(message, [tab("Fecha", "Descripción", "Débitos"), tab("05/09/2026", "SINPE MOVIL Uber___________", "1.100,00"), tab("06/09/2026", "UBER *TRIP HELP.UBER.COM .", "1.663,20"), tab("07/09/2026", "UBER RIDES", "1.071,33")].join("\n"));
+const pageCall = calls.find((c) => c.method === "sendMessage" && c.text.includes("SINPE MOVIL Uber"));
+assert.equal(pageCall.parse_mode, "Markdown");
+assert.ok(pageCall.text.includes("Uber\\_\\_\\_"), "underscores are escaped");
+assert.ok(pageCall.text.includes("\\*TRIP"), "asterisks are escaped");
+assert.ok(!/(^|[^\\])_/.test(pageCall.text), "no bare underscore is left to open italics");
+
 console.log("consolidation smoke: ok");
