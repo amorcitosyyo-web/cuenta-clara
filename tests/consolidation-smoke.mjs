@@ -267,15 +267,29 @@ await say("consolidar");
 assert.equal(movement("uber").amount, 1071.33);
 assert.ok(store.agentMemory.consolidationArmed["1"]);
 
-// 14) What actually reaches Telegram: underscores and asterisks in a merchant name are escaped
-//     so they stay literal instead of turning the following lines into italics.
-reset(existing());
+// 14) What actually reaches Telegram. Statement descriptors lose the bank's underscore padding;
+//     names already in the app (from the email) keep theirs, so they are escaped and stay literal
+//     instead of turning the lines after them into italics.
+reset([
+  { id: "keep", type: "expense", merchant: "COMERCIO 0 UNICO", amount: 1000, date: "2026-09-05", category: "alimentacion", source: "gmail" },
+  { id: "pad", type: "expense", merchant: "SINPE MOVIL Zeta_____", amount: 7000, date: "2026-09-06", category: "alimentacion", source: "gmail" },
+]);
 calls = [];
-await _test.analyzePastedBankTable(message, [tab("Fecha", "Descripción", "Débitos"), tab("05/09/2026", "SINPE MOVIL Uber___________", "1.100,00"), tab("06/09/2026", "UBER *TRIP HELP.UBER.COM .", "1.663,20"), tab("07/09/2026", "UBER RIDES", "1.071,33")].join("\n"));
-const pageCall = calls.find((c) => c.method === "sendMessage" && c.text.includes("SINPE MOVIL Uber"));
-assert.equal(pageCall.parse_mode, "Markdown");
-assert.ok(pageCall.text.includes("Uber\\_\\_\\_"), "underscores are escaped");
-assert.ok(pageCall.text.includes("\\*TRIP"), "asterisks are escaped");
-assert.ok(!/(^|[^\\])_/.test(pageCall.text), "no bare underscore is left to open italics");
+await _test.analyzePastedBankTable(message, [
+  tab("Fecha", "Descripción", "Débitos"),
+  ...Array.from({ length: 10 }, (_, i) => tab("05/09/2026", `COMERCIO ${i} UNICO`, `${1000 + i},00`)),
+  tab("05/09/2026", "SINPE MOVIL Uber___________", "1.100,00"),
+  tab("06/09/2026", "UBER *TRIP HELP.UBER.COM .", "1.663,20"),
+  tab("30/09/2026", "ULTIMO", "100,00"),
+].join("\n"));
+const addedPage = calls.find((c) => c.method === "sendMessage" && c.text.includes("UBER"));
+assert.equal(addedPage.parse_mode, "Markdown");
+assert.ok(addedPage.text.includes("SINPE MOVIL Uber\n"), "the statement descriptor shows as words");
+assert.ok(!addedPage.text.includes("Uber_"), "the bank padding is gone");
+assert.ok(addedPage.text.includes("\\*TRIP"), "asterisks stay literal");
+const unconfirmedPage = calls.find((c) => c.method === "sendMessage" && c.text.includes("En la app pero no en el estado"));
+assert.ok(unconfirmedPage.text.includes("SINPE MOVIL Zeta\\_\\_\\_\\_\\_"), "an app name with underscores is escaped, not read as italics");
+assert.ok(!/(^|[^\\])_/.test(unconfirmedPage.text), "no bare underscore is left to open italics");
+assert.ok(movement("pad"), "the app expense itself is untouched");
 
 console.log("consolidation smoke: ok");
