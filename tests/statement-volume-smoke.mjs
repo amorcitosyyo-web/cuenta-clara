@@ -1,0 +1,78 @@
+// A big month (150+ rows) must not lose rows: not to a fixed row cap, and not
+// when Telegram splits a long paste into several messages that are handled by
+// several requests at the same time, each saving the whole state.
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+process.env.TELEGRAM_BOT_TOKEN = "test";
+process.env.SUPABASE_URL = "https://example.supabase.co";
+process.env.SUPABASE_SERVICE_ROLE_KEY = "key";
+process.env.AGENT_OWNER_USER_ID = "u1";
+delete process.env.OPENAI_API_KEY;
+
+let store = {};
+let version = 1;
+const stamp = () => `2026-10-03T00:00:00.${String(version).padStart(6, "0")}+00:00`;
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sentTexts = [];
+
+// An in-memory stand-in for the app_states table with a version per save and
+// a conditional PATCH, so concurrent requests really can overwrite each other.
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url);
+  const method = options.method || "GET";
+  if (target.includes("api.telegram.org")) {
+    const { text } = JSON.parse(options.body);
+    if (typeof text === "string") sentTexts.push(text);
+    return { ok: true, json: async () => ({ ok: true, result: { message_id: 1 } }) };
+  }
+  if (target.includes("/rest/v1/app_states")) {
+    await wait(15);
+    if (method === "GET") {
+      const row = { data: JSON.parse(JSON.stringify(store)) };
+      if (target.includes("updated_at")) row.updated_at = stamp();
+      return { ok: true, status: 200, json: async () => [row] };
+    }
+    const body = JSON.parse(options.body);
+    if (method === "PATCH" && decodeURIComponent(target.split("updated_at=eq.")[1]) !== stamp()) {
+      return { ok: true, status: 200, json: async () => [] };
+    }
+    store = JSON.parse(JSON.stringify(body.data));
+    version += 1;
+    return { ok: true, status: 200, json: async () => (method === "PATCH" ? [{ user_id: "u1" }] : {}), text: async () => "" };
+  }
+  return { ok: true, status: 200, json: async () => ({}), text: async () => "" };
+};
+
+const { _test } = require("../lib/telegram-webhook.js");
+const message = { chat: { id: 1 }, from: { id: 1 } };
+const header = "Fecha\tDescripción\tDébitos";
+const rowsOf = (count) => Array.from({ length: count }, (_, i) => [`${String((i % 28) + 1).padStart(2, "0")}/09/2026`, `COMERCIO NUMERO ${i + 1} DISTINTO`, `${1000 + i * 37},00`].join("\t"));
+const reset = () => { store = {}; version = 1; sentTexts.length = 0; };
+const saved = () => (store.movements || []).length;
+
+// 1) 150 rows in one go: all of them, no silent cap at 120.
+reset();
+await _test.analyzePastedBankTable(message, [header, ...rowsOf(150)].join("\n"));
+assert.equal(saved(), 150);
+
+// 2) The same statement split into 3 messages handled at the same time (only the
+//    first has a header): nothing is overwritten.
+reset();
+const rows = rowsOf(150);
+await Promise.all([
+  _test.analyzePastedBankTable(message, [header, ...rows.slice(0, 50)].join("\n")),
+  _test.analyzePastedBankTable(message, rows.slice(50, 100).join("\n")),
+  _test.analyzePastedBankTable(message, rows.slice(100).join("\n")),
+]);
+assert.equal(saved(), 150, "concurrent parts of one statement must all be kept");
+assert.equal(new Set(store.movements.map((m) => m.merchant)).size, 150);
+
+// 3) Beyond the hard cap, the user is told rather than silently losing rows.
+reset();
+await _test.analyzePastedBankTable(message, [header, ...rowsOf(450)].join("\n"));
+assert.equal(saved(), 400);
+assert.ok(sentTexts.some((text) => text.includes("Solo procesé las primeras 400 filas de 450")));
+
+console.log("statement volume smoke: ok");
