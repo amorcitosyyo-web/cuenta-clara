@@ -8,6 +8,6 @@
     "sharp": "^0.35.4"
   },
   "scripts": {
-    "test": "node tests/parser-smoke.mjs && node tests/agent-core-smoke.mjs"
+    "test": "node tests/parser-smoke.mjs && node tests/statement-smoke.mjs && node tests/agent-core-smoke.mjs"
   }
 }
