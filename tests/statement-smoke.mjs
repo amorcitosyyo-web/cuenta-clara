@@ -68,6 +68,18 @@ assert.equal(_test.looksLikePastedBankTable("lista del super:\nleche 1500\npan 8
 // A header with no matching rows after it is not a statement either.
 assert.equal(_test.looksLikePastedBankTable("Fecha Descripción Débitos\nsin filas"), false);
 
+// 2c) A sentence typed before the table must not become its header: with tabs it used to
+//     leave every row without columns (0 rows readable).
+const tabbed = [tab("Fecha", "Descripción", "Débitos"), tab("26/09/2026", "VALOR DE TARJETA TITULAR", "2.772,00"), tab("01/09/2026", "AUTO MERCADO MORAVIA SAN J", "6.120,00")].join("\n");
+const spacedTable = "Fecha Descripción Débitos\n26/09/2026 VALOR DE TARJETA TITULAR 2.772,00\n01/09/2026 AUTO MERCADO MORAVIA SAN J 6.120,00";
+for (const intro of ["Aquí va el estado de septiembre:\n", "Hola\nAquí va el estado de septiembre:\n", "\n\n", "Estado de cuenta 2026:\n"]) {
+  for (const [kind, table] of [["tabs", tabbed], ["spaces", spacedTable]]) {
+    if (kind === "spaces" && /\d/.test(intro)) continue;
+    const parsedRows = rowsFrom(intro + table);
+    assert.deepEqual(parsedRows.map((row) => row.amount), [2772, 6120], `${kind} with intro ${JSON.stringify(intro)}`);
+  }
+}
+
 // 3) Two identical charges on the same day stay two movements.
 let state = newState();
 let out = await run(rowsFrom([
